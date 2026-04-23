@@ -5,6 +5,7 @@ import {
   Building2,
   MailPlus,
   LayoutDashboard,
+  Network,
   Palette,
   Settings2,
   ShieldCheck,
@@ -52,6 +53,16 @@ type TenantUser = {
   firstName: string;
   lastName: string;
   role: string;
+};
+
+type SalesGroup = {
+  id: string;
+  name: string;
+  code: string;
+  region: string;
+  managerEmail: string;
+  status: 'draft' | 'active';
+  notes: string;
 };
 
 const milestones: Milestone[] = [
@@ -377,30 +388,151 @@ function UsersPanel({
   );
 }
 
+function SalesGroupsPanel({
+  salesGroups,
+  onGroupAdded
+}: {
+  salesGroups: SalesGroup[];
+  onGroupAdded: (group: SalesGroup) => void;
+}) {
+  const [form, setForm] = React.useState({
+    name: '',
+    code: '',
+    region: '',
+    managerEmail: 'manager@example.com',
+    status: 'draft',
+    notes: ''
+  });
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  function setField(field: keyof typeof form, value: string) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+
+    const response = await fetch('/api/admin/sales-groups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form)
+    });
+    const payload = await response.json();
+    setSaving(false);
+
+    if (!response.ok) {
+      setError(payload.error || 'Unable to add sales group.');
+      return;
+    }
+
+    onGroupAdded(payload.salesGroup);
+    setForm({
+      name: '',
+      code: '',
+      region: '',
+      managerEmail: 'manager@example.com',
+      status: 'draft',
+      notes: ''
+    });
+  }
+
+  return (
+    <section className="content-grid">
+      <article className="panel">
+        <div className="panel-heading">
+          <h2>Sales Groups</h2>
+          <p>Team structures that will own recruiters, reps, and hierarchy reporting.</p>
+        </div>
+        <div className="user-list">
+          {salesGroups.map((group) => (
+            <div className="user-row" key={group.id}>
+              <div>
+                <strong>{group.name}</strong>
+                <p>{group.code} · {group.region || 'Unassigned region'} · {group.managerEmail}</p>
+              </div>
+              <span className={`status-pill ${group.status === 'active' ? 'done' : 'next'}`}>{group.status}</span>
+            </div>
+          ))}
+        </div>
+      </article>
+
+      <article className="panel">
+        <div className="panel-heading">
+          <h2>Add Sales Group</h2>
+          <p>Create the team containers that members and downlines will belong to next.</p>
+        </div>
+        <form className="form-grid onboarding-form" onSubmit={submit}>
+          <label>
+            Group name
+            <input value={form.name} onChange={(event) => setField('name', event.target.value)} />
+          </label>
+          <label>
+            Group code
+            <input value={form.code} onChange={(event) => setField('code', event.target.value)} />
+          </label>
+          <label>
+            Region
+            <input value={form.region} onChange={(event) => setField('region', event.target.value)} />
+          </label>
+          <label>
+            Manager email
+            <input value={form.managerEmail} onChange={(event) => setField('managerEmail', event.target.value)} />
+          </label>
+          <label>
+            Status
+            <select value={form.status} onChange={(event) => setField('status', event.target.value)}>
+              <option value="draft">draft</option>
+              <option value="active">active</option>
+            </select>
+          </label>
+          <label>
+            Notes
+            <input value={form.notes} onChange={(event) => setField('notes', event.target.value)} />
+          </label>
+          {error ? <p className="error full-width">{error}</p> : null}
+          <div className="form-actions full-width">
+            <button type="submit" className="primary" disabled={saving}>
+              <Network size={16} />
+              {saving ? 'Saving' : 'Add sales group'}
+            </button>
+          </div>
+        </form>
+      </article>
+    </section>
+  );
+}
+
 function App() {
-  const [screen, setScreen] = React.useState<'overview' | 'onboarding' | 'users'>('overview');
+  const [screen, setScreen] = React.useState<'overview' | 'onboarding' | 'users' | 'sales-groups'>('overview');
   const [session, setSession] = React.useState<SessionPayload | null>(null);
   const [setup, setSetup] = React.useState<TenantSetup | null>(null);
   const [users, setUsers] = React.useState<TenantUser[]>([]);
   const [tenantRoles, setTenantRoles] = React.useState<string[]>([]);
+  const [salesGroups, setSalesGroups] = React.useState<SalesGroup[]>([]);
 
   async function loadData() {
-    const [sessionResponse, onboardingResponse, usersResponse, rolesResponse] = await Promise.all([
+    const [sessionResponse, onboardingResponse, usersResponse, rolesResponse, salesGroupsResponse] = await Promise.all([
       fetch('/api/session'),
       fetch('/api/admin/onboarding'),
       fetch('/api/admin/tenant-users'),
-      fetch('/api/tenant-roles')
+      fetch('/api/tenant-roles'),
+      fetch('/api/admin/sales-groups')
     ]);
-    const [sessionPayload, onboardingPayload, usersPayload, rolesPayload] = await Promise.all([
+    const [sessionPayload, onboardingPayload, usersPayload, rolesPayload, salesGroupsPayload] = await Promise.all([
       sessionResponse.json(),
       onboardingResponse.json(),
       usersResponse.json(),
-      rolesResponse.json()
+      rolesResponse.json(),
+      salesGroupsResponse.json()
     ]);
     setSession(sessionPayload);
     setSetup(onboardingPayload.setup);
     setUsers(usersPayload.users);
     setTenantRoles(rolesPayload.roles);
+    setSalesGroups(salesGroupsPayload.salesGroups);
   }
 
   React.useEffect(() => {
@@ -459,6 +591,10 @@ function App() {
           <Users size={16} />
           Users
         </button>
+        <button className={screen === 'sales-groups' ? 'active' : ''} onClick={() => setScreen('sales-groups')}>
+          <Network size={16} />
+          Sales groups
+        </button>
       </nav>
 
       {screen === 'overview' ? (
@@ -513,6 +649,14 @@ function App() {
               const filtered = current.filter((entry) => entry.email !== user.email);
               return [...filtered, user].sort((a, b) => a.lastName.localeCompare(b.lastName));
             });
+          }}
+        />
+      ) : null}
+      {screen === 'sales-groups' ? (
+        <SalesGroupsPanel
+          salesGroups={salesGroups}
+          onGroupAdded={(group) => {
+            setSalesGroups((current) => [...current, group].sort((left, right) => left.name.localeCompare(right.name)));
           }}
         />
       ) : null}

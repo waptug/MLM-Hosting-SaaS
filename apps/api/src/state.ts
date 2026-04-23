@@ -13,6 +13,17 @@ export type TenantSetup = {
   primaryDomain: string;
 };
 
+export type SalesGroup = {
+  id: string;
+  tenantSlug: string;
+  name: string;
+  code: string;
+  region: string;
+  managerEmail: string;
+  status: 'draft' | 'active';
+  notes: string;
+};
+
 const tenantSetup: TenantSetup = {
   slug: demoTenant.slug,
   name: demoTenant.name,
@@ -23,6 +34,19 @@ const tenantSetup: TenantSetup = {
   brandLabel: 'Demo Hosting Group',
   primaryDomain: 'demo-hosting-group.example'
 };
+
+const salesGroups: SalesGroup[] = [
+  {
+    id: 'group_1',
+    tenantSlug: demoTenant.slug,
+    name: 'Core Hosting Team',
+    code: 'CORE',
+    region: 'North America',
+    managerEmail: 'manager@example.com',
+    status: 'active',
+    notes: 'Initial launch team for reseller recruiting and hosting plan sales.'
+  }
+];
 
 export function getTenantSetup() {
   return tenantSetup;
@@ -83,4 +107,20 @@ export function addTenantUser(input: {
   }
 
   return listTenantUsers().find((user) => user.email === normalizedEmail)!;
+}
+
+export function listSalesGroups() {
+  return salesGroups
+    .filter((group) => group.tenantSlug === demoTenant.slug)
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export function addSalesGroup(input: Omit<SalesGroup, 'id' | 'tenantSlug'>) {
+  const salesGroup: SalesGroup = {
+    id: `group_${salesGroups.length + 1}`,
+    tenantSlug: demoTenant.slug,
+    ...input
+  };
+  salesGroups.push(salesGroup);
+  return salesGroup;
 }

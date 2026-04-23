@@ -5,7 +5,7 @@ import { tenantRoles } from '../../../packages/auth/src/model.js';
 import { attachTenantContext, requireRole } from './auth.js';
 import { config } from './config.js';
 import { demoTenant } from './demo-data.js';
-import { addTenantUser, getTenantSetup, listTenantUsers, updateTenantSetup } from './state.js';
+import { addSalesGroup, addTenantUser, getTenantSetup, listSalesGroups, listTenantUsers, updateTenantSetup } from './state.js';
 
 type BootstrapTenant = {
   slug: string;
@@ -152,6 +152,48 @@ app.post(
     });
 
     res.status(201).json({ user });
+  }
+);
+
+app.get(
+  '/api/admin/sales-groups',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager', 'recruiter']),
+  (_req, res) => {
+    res.json({ salesGroups: listSalesGroups() });
+  }
+);
+
+app.post(
+  '/api/admin/sales-groups',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager']),
+  (req, res) => {
+    const body = req.body || {};
+    const name = String(body.name || '').trim();
+    const code = String(body.code || '').trim().toUpperCase();
+    const region = String(body.region || '').trim();
+    const managerEmail = String(body.managerEmail || '').trim().toLowerCase();
+    const status = body.status === 'active' ? 'active' : 'draft';
+    const notes = String(body.notes || '').trim();
+
+    if (!name || !code || !managerEmail) {
+      res.status(400).json({
+        error: 'Name, code, and manager email are required.'
+      });
+      return;
+    }
+
+    const salesGroup = addSalesGroup({
+      name,
+      code,
+      region,
+      managerEmail,
+      status,
+      notes
+    });
+
+    res.status(201).json({ salesGroup });
   }
 );
 
