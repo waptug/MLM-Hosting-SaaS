@@ -5,6 +5,7 @@ import {
   Building2,
   MailPlus,
   LayoutDashboard,
+  ListTree,
   Network,
   Palette,
   Settings2,
@@ -63,6 +64,19 @@ type SalesGroup = {
   managerEmail: string;
   status: 'draft' | 'active';
   notes: string;
+};
+
+type Member = {
+  id: string;
+  salesGroupId: string;
+  salesGroupName: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  roleTitle: string;
+  status: 'prospect' | 'active' | 'paused';
+  sponsorMemberId: string | null;
+  sponsorName: string;
 };
 
 const milestones: Milestone[] = [
@@ -505,34 +519,185 @@ function SalesGroupsPanel({
   );
 }
 
+function MembersPanel({
+  members,
+  salesGroups,
+  onMemberAdded
+}: {
+  members: Member[];
+  salesGroups: SalesGroup[];
+  onMemberAdded: (member: Member) => void;
+}) {
+  const [form, setForm] = React.useState({
+    salesGroupId: salesGroups[0]?.id || '',
+    firstName: '',
+    lastName: '',
+    email: '',
+    roleTitle: '',
+    status: 'prospect',
+    sponsorMemberId: ''
+  });
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  React.useEffect(() => {
+    if (salesGroups.length && !form.salesGroupId) {
+      setForm((current) => ({ ...current, salesGroupId: salesGroups[0].id }));
+    }
+  }, [salesGroups, form.salesGroupId]);
+
+  function setField(field: keyof typeof form, value: string) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+
+    const response = await fetch('/api/admin/members', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form)
+    });
+    const payload = await response.json();
+    setSaving(false);
+
+    if (!response.ok) {
+      setError(payload.error || 'Unable to add member.');
+      return;
+    }
+
+    onMemberAdded(payload.member);
+    setForm({
+      salesGroupId: salesGroups[0]?.id || '',
+      firstName: '',
+      lastName: '',
+      email: '',
+      roleTitle: '',
+      status: 'prospect',
+      sponsorMemberId: ''
+    });
+  }
+
+  return (
+    <section className="content-grid">
+      <article className="panel">
+        <div className="panel-heading">
+          <h2>Member Hierarchy</h2>
+          <p>Members belong to sales groups and can be linked to sponsors for multilevel reporting.</p>
+        </div>
+        <div className="user-list">
+          {members.map((member) => (
+            <div className="user-row" key={member.id}>
+              <div>
+                <strong>{member.firstName} {member.lastName}</strong>
+                <p>{member.salesGroupName} · {member.roleTitle || 'Rep'} · sponsor: {member.sponsorName || 'none'}</p>
+              </div>
+              <span className={`status-pill ${member.status === 'active' ? 'done' : member.status === 'paused' ? 'next' : 'active'}`}>
+                {member.status}
+              </span>
+            </div>
+          ))}
+        </div>
+      </article>
+
+      <article className="panel">
+        <div className="panel-heading">
+          <h2>Add Member</h2>
+          <p>Create the first hierarchy entries that will later own customers, orders, and commissions.</p>
+        </div>
+        <form className="form-grid onboarding-form" onSubmit={submit}>
+          <label>
+            Sales group
+            <select value={form.salesGroupId} onChange={(event) => setField('salesGroupId', event.target.value)}>
+              {salesGroups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Sponsor
+            <select value={form.sponsorMemberId} onChange={(event) => setField('sponsorMemberId', event.target.value)}>
+              <option value="">No sponsor</option>
+              {members.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.firstName} {member.lastName}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            First name
+            <input value={form.firstName} onChange={(event) => setField('firstName', event.target.value)} />
+          </label>
+          <label>
+            Last name
+            <input value={form.lastName} onChange={(event) => setField('lastName', event.target.value)} />
+          </label>
+          <label>
+            Email
+            <input value={form.email} onChange={(event) => setField('email', event.target.value)} />
+          </label>
+          <label>
+            Role title
+            <input value={form.roleTitle} onChange={(event) => setField('roleTitle', event.target.value)} />
+          </label>
+          <label>
+            Status
+            <select value={form.status} onChange={(event) => setField('status', event.target.value)}>
+              <option value="prospect">prospect</option>
+              <option value="active">active</option>
+              <option value="paused">paused</option>
+            </select>
+          </label>
+          {error ? <p className="error full-width">{error}</p> : null}
+          <div className="form-actions full-width">
+            <button type="submit" className="primary" disabled={saving}>
+              <ListTree size={16} />
+              {saving ? 'Saving' : 'Add member'}
+            </button>
+          </div>
+        </form>
+      </article>
+    </section>
+  );
+}
+
 function App() {
-  const [screen, setScreen] = React.useState<'overview' | 'onboarding' | 'users' | 'sales-groups'>('overview');
+  const [screen, setScreen] = React.useState<'overview' | 'onboarding' | 'users' | 'sales-groups' | 'members'>('overview');
   const [session, setSession] = React.useState<SessionPayload | null>(null);
   const [setup, setSetup] = React.useState<TenantSetup | null>(null);
   const [users, setUsers] = React.useState<TenantUser[]>([]);
   const [tenantRoles, setTenantRoles] = React.useState<string[]>([]);
   const [salesGroups, setSalesGroups] = React.useState<SalesGroup[]>([]);
+  const [members, setMembers] = React.useState<Member[]>([]);
 
   async function loadData() {
-    const [sessionResponse, onboardingResponse, usersResponse, rolesResponse, salesGroupsResponse] = await Promise.all([
+    const [sessionResponse, onboardingResponse, usersResponse, rolesResponse, salesGroupsResponse, membersResponse] = await Promise.all([
       fetch('/api/session'),
       fetch('/api/admin/onboarding'),
       fetch('/api/admin/tenant-users'),
       fetch('/api/tenant-roles'),
-      fetch('/api/admin/sales-groups')
+      fetch('/api/admin/sales-groups'),
+      fetch('/api/admin/members')
     ]);
-    const [sessionPayload, onboardingPayload, usersPayload, rolesPayload, salesGroupsPayload] = await Promise.all([
+    const [sessionPayload, onboardingPayload, usersPayload, rolesPayload, salesGroupsPayload, membersPayload] = await Promise.all([
       sessionResponse.json(),
       onboardingResponse.json(),
       usersResponse.json(),
       rolesResponse.json(),
-      salesGroupsResponse.json()
+      salesGroupsResponse.json(),
+      membersResponse.json()
     ]);
     setSession(sessionPayload);
     setSetup(onboardingPayload.setup);
     setUsers(usersPayload.users);
     setTenantRoles(rolesPayload.roles);
     setSalesGroups(salesGroupsPayload.salesGroups);
+    setMembers(membersPayload.members);
   }
 
   React.useEffect(() => {
@@ -594,6 +759,10 @@ function App() {
         <button className={screen === 'sales-groups' ? 'active' : ''} onClick={() => setScreen('sales-groups')}>
           <Network size={16} />
           Sales groups
+        </button>
+        <button className={screen === 'members' ? 'active' : ''} onClick={() => setScreen('members')}>
+          <ListTree size={16} />
+          Members
         </button>
       </nav>
 
@@ -657,6 +826,15 @@ function App() {
           salesGroups={salesGroups}
           onGroupAdded={(group) => {
             setSalesGroups((current) => [...current, group].sort((left, right) => left.name.localeCompare(right.name)));
+          }}
+        />
+      ) : null}
+      {screen === 'members' ? (
+        <MembersPanel
+          members={members}
+          salesGroups={salesGroups}
+          onMemberAdded={(member) => {
+            setMembers((current) => [...current, member].sort((left, right) => left.lastName.localeCompare(right.lastName)));
           }}
         />
       ) : null}

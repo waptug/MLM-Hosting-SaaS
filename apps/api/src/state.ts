@@ -24,6 +24,18 @@ export type SalesGroup = {
   notes: string;
 };
 
+export type Member = {
+  id: string;
+  tenantSlug: string;
+  salesGroupId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  roleTitle: string;
+  status: 'prospect' | 'active' | 'paused';
+  sponsorMemberId: string | null;
+};
+
 const tenantSetup: TenantSetup = {
   slug: demoTenant.slug,
   name: demoTenant.name,
@@ -45,6 +57,31 @@ const salesGroups: SalesGroup[] = [
     managerEmail: 'manager@example.com',
     status: 'active',
     notes: 'Initial launch team for reseller recruiting and hosting plan sales.'
+  }
+];
+
+const members: Member[] = [
+  {
+    id: 'member_1',
+    tenantSlug: demoTenant.slug,
+    salesGroupId: 'group_1',
+    firstName: 'Jordan',
+    lastName: 'Blake',
+    email: 'jordan.blake@example.com',
+    roleTitle: 'Group Lead',
+    status: 'active',
+    sponsorMemberId: null
+  },
+  {
+    id: 'member_2',
+    tenantSlug: demoTenant.slug,
+    salesGroupId: 'group_1',
+    firstName: 'Taylor',
+    lastName: 'Reese',
+    email: 'taylor.reese@example.com',
+    roleTitle: 'Senior Rep',
+    status: 'active',
+    sponsorMemberId: 'member_1'
   }
 ];
 
@@ -123,4 +160,33 @@ export function addSalesGroup(input: Omit<SalesGroup, 'id' | 'tenantSlug'>) {
   };
   salesGroups.push(salesGroup);
   return salesGroup;
+}
+
+export function listMembers() {
+  return members
+    .filter((member) => member.tenantSlug === demoTenant.slug)
+    .map((member) => ({
+      ...member,
+      salesGroupName: salesGroups.find((group) => group.id === member.salesGroupId)?.name || '',
+      sponsorName: member.sponsorMemberId
+        ? members
+            .filter((candidate) => candidate.tenantSlug === demoTenant.slug)
+            .find((candidate) => candidate.id === member.sponsorMemberId)
+            ? `${members.find((candidate) => candidate.id === member.sponsorMemberId)?.firstName} ${
+                members.find((candidate) => candidate.id === member.sponsorMemberId)?.lastName
+              }`
+            : ''
+        : ''
+    }))
+    .sort((left, right) => left.lastName.localeCompare(right.lastName));
+}
+
+export function addMember(input: Omit<Member, 'id' | 'tenantSlug'>) {
+  const member: Member = {
+    id: `member_${members.length + 1}`,
+    tenantSlug: demoTenant.slug,
+    ...input
+  };
+  members.push(member);
+  return listMembers().find((entry) => entry.id === member.id)!;
 }

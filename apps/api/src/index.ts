@@ -5,7 +5,7 @@ import { tenantRoles } from '../../../packages/auth/src/model.js';
 import { attachTenantContext, requireRole } from './auth.js';
 import { config } from './config.js';
 import { demoTenant } from './demo-data.js';
-import { addSalesGroup, addTenantUser, getTenantSetup, listSalesGroups, listTenantUsers, updateTenantSetup } from './state.js';
+import { addMember, addSalesGroup, addTenantUser, getTenantSetup, listMembers, listSalesGroups, listTenantUsers, updateTenantSetup } from './state.js';
 
 type BootstrapTenant = {
   slug: string;
@@ -194,6 +194,52 @@ app.post(
     });
 
     res.status(201).json({ salesGroup });
+  }
+);
+
+app.get(
+  '/api/admin/members',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager', 'recruiter']),
+  (_req, res) => {
+    res.json({ members: listMembers() });
+  }
+);
+
+app.post(
+  '/api/admin/members',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager', 'recruiter']),
+  (req, res) => {
+    const body = req.body || {};
+    const salesGroupId = String(body.salesGroupId || '').trim();
+    const firstName = String(body.firstName || '').trim();
+    const lastName = String(body.lastName || '').trim();
+    const email = String(body.email || '').trim().toLowerCase();
+    const roleTitle = String(body.roleTitle || '').trim();
+    const status = ['prospect', 'active', 'paused'].includes(String(body.status || ''))
+      ? (body.status as 'prospect' | 'active' | 'paused')
+      : 'prospect';
+    const sponsorMemberId = String(body.sponsorMemberId || '').trim() || null;
+
+    if (!salesGroupId || !firstName || !lastName || !email) {
+      res.status(400).json({
+        error: 'Sales group, first name, last name, and email are required.'
+      });
+      return;
+    }
+
+    const member = addMember({
+      salesGroupId,
+      firstName,
+      lastName,
+      email,
+      roleTitle,
+      status,
+      sponsorMemberId
+    });
+
+    res.status(201).json({ member });
   }
 );
 
