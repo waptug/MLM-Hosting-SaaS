@@ -121,6 +121,26 @@ type Order = {
   placedAt: string;
 };
 
+type CommissionSummary = {
+  memberId: string;
+  memberName: string;
+  sponsorName: string;
+  activeOrders: number;
+  directRevenue: number;
+  directCommission: number;
+  overrideCommission: number;
+  totalCommission: number;
+};
+
+type PayoutBatch = {
+  id: string;
+  periodLabel: string;
+  scheduledFor: string;
+  status: 'draft' | 'approved' | 'paid';
+  payeeCount: number;
+  totalAmount: number;
+};
+
 const milestones: Milestone[] = [
   {
     title: 'Tenant foundation',
@@ -1066,8 +1086,99 @@ function OrdersPanel({
   );
 }
 
+function CommissionsPanel({
+  summaries,
+  payouts
+}: {
+  summaries: CommissionSummary[];
+  payouts: PayoutBatch[];
+}) {
+  const totals = summaries.reduce(
+    (accumulator, summary) => ({
+      directRevenue: accumulator.directRevenue + summary.directRevenue,
+      directCommission: accumulator.directCommission + summary.directCommission,
+      overrideCommission: accumulator.overrideCommission + summary.overrideCommission,
+      totalCommission: accumulator.totalCommission + summary.totalCommission
+    }),
+    {
+      directRevenue: 0,
+      directCommission: 0,
+      overrideCommission: 0,
+      totalCommission: 0
+    }
+  );
+
+  return (
+    <>
+      <section className="grid stats-grid">
+        <article className="stat-card">
+          <span>Direct revenue</span>
+          <strong>${totals.directRevenue.toFixed(2)}</strong>
+        </article>
+        <article className="stat-card">
+          <span>Direct commission</span>
+          <strong>${totals.directCommission.toFixed(2)}</strong>
+        </article>
+        <article className="stat-card">
+          <span>Override commission</span>
+          <strong>${totals.overrideCommission.toFixed(2)}</strong>
+        </article>
+        <article className="stat-card">
+          <span>Pending payout total</span>
+          <strong>${totals.totalCommission.toFixed(2)}</strong>
+        </article>
+      </section>
+
+      <section className="content-grid">
+        <article className="panel">
+          <div className="panel-heading">
+            <h2>Commission Summary</h2>
+            <p>Direct commissions come from the sold product rate. Sponsor overrides are calculated at 5% of active downline orders.</p>
+          </div>
+          <div className="user-list">
+            {summaries.map((summary) => (
+              <div className="user-row" key={summary.memberId}>
+                <div>
+                  <strong>{summary.memberName}</strong>
+                  <p>
+                    {summary.activeOrders} active orders · sponsor: {summary.sponsorName || 'none'} · revenue $
+                    {summary.directRevenue.toFixed(2)}
+                  </p>
+                </div>
+                <span className="status-pill done">${summary.totalCommission.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="panel">
+          <div className="panel-heading">
+            <h2>Payout Batches</h2>
+            <p>Draft and historical payout periods visible to finance and tenant admins.</p>
+          </div>
+          <div className="user-list">
+            {payouts.map((batch) => (
+              <div className="user-row" key={batch.id}>
+                <div>
+                  <strong>{batch.periodLabel}</strong>
+                  <p>
+                    {batch.payeeCount} payees · scheduled {batch.scheduledFor}
+                  </p>
+                </div>
+                <span className={`status-pill ${batch.status === 'paid' ? 'done' : batch.status === 'approved' ? 'active' : 'next'}`}>
+                  ${batch.totalAmount.toFixed(2)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </article>
+      </section>
+    </>
+  );
+}
+
 function App() {
-  const [screen, setScreen] = React.useState<'overview' | 'onboarding' | 'users' | 'sales-groups' | 'members' | 'customers' | 'orders'>('overview');
+  const [screen, setScreen] = React.useState<'overview' | 'onboarding' | 'users' | 'sales-groups' | 'members' | 'customers' | 'orders' | 'commissions'>('overview');
   const [session, setSession] = React.useState<SessionPayload | null>(null);
   const [setup, setSetup] = React.useState<TenantSetup | null>(null);
   const [users, setUsers] = React.useState<TenantUser[]>([]);
@@ -1077,6 +1188,21 @@ function App() {
   const [customers, setCustomers] = React.useState<Customer[]>([]);
   const [products, setProducts] = React.useState<Product[]>([]);
   const [orders, setOrders] = React.useState<Order[]>([]);
+  const [commissionSummaries, setCommissionSummaries] = React.useState<CommissionSummary[]>([]);
+  const [payoutBatches, setPayoutBatches] = React.useState<PayoutBatch[]>([]);
+
+  async function reloadFinanceData() {
+    const [commissionsResponse, payoutsResponse] = await Promise.all([
+      fetch('/api/admin/commissions'),
+      fetch('/api/admin/payouts')
+    ]);
+    const [commissionsPayload, payoutsPayload] = await Promise.all([
+      commissionsResponse.json(),
+      payoutsResponse.json()
+    ]);
+    setCommissionSummaries(commissionsPayload.summaries);
+    setPayoutBatches(payoutsPayload.batches);
+  }
 
   async function loadData() {
     const [
@@ -1088,7 +1214,9 @@ function App() {
       membersResponse,
       customersResponse,
       productsResponse,
-      ordersResponse
+      ordersResponse,
+      commissionsResponse,
+      payoutsResponse
     ] = await Promise.all([
       fetch('/api/session'),
       fetch('/api/admin/onboarding'),
@@ -1098,7 +1226,9 @@ function App() {
       fetch('/api/admin/members'),
       fetch('/api/admin/customers'),
       fetch('/api/admin/products'),
-      fetch('/api/admin/orders')
+      fetch('/api/admin/orders'),
+      fetch('/api/admin/commissions'),
+      fetch('/api/admin/payouts')
     ]);
     const [
       sessionPayload,
@@ -1109,7 +1239,9 @@ function App() {
       membersPayload,
       customersPayload,
       productsPayload,
-      ordersPayload
+      ordersPayload,
+      commissionsPayload,
+      payoutsPayload
     ] = await Promise.all([
       sessionResponse.json(),
       onboardingResponse.json(),
@@ -1119,7 +1251,9 @@ function App() {
       membersResponse.json(),
       customersResponse.json(),
       productsResponse.json(),
-      ordersResponse.json()
+      ordersResponse.json(),
+      commissionsResponse.json(),
+      payoutsResponse.json()
     ]);
     setSession(sessionPayload);
     setSetup(onboardingPayload.setup);
@@ -1130,6 +1264,8 @@ function App() {
     setCustomers(customersPayload.customers);
     setProducts(productsPayload.products);
     setOrders(ordersPayload.orders);
+    setCommissionSummaries(commissionsPayload.summaries);
+    setPayoutBatches(payoutsPayload.batches);
   }
 
   React.useEffect(() => {
@@ -1203,6 +1339,10 @@ function App() {
         <button className={screen === 'orders' ? 'active' : ''} onClick={() => setScreen('orders')}>
           <ShoppingCart size={16} />
           Orders
+        </button>
+        <button className={screen === 'commissions' ? 'active' : ''} onClick={() => setScreen('commissions')}>
+          <BadgeDollarSign size={16} />
+          Commissions
         </button>
       </nav>
 
@@ -1297,8 +1437,12 @@ function App() {
           members={members}
           onOrderAdded={(order) => {
             setOrders((current) => [...current, order].sort((left, right) => right.placedAt.localeCompare(left.placedAt)));
+            reloadFinanceData().catch(() => undefined);
           }}
         />
+      ) : null}
+      {screen === 'commissions' ? (
+        <CommissionsPanel summaries={commissionSummaries} payouts={payoutBatches} />
       ) : null}
     </main>
   );

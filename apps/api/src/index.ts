@@ -15,9 +15,11 @@ import {
   hasCustomer,
   hasMember,
   hasProduct,
+  listCommissionSummary,
   listCustomers,
   listMembers,
   listOrders,
+  listPayoutBatches,
   listProducts,
   listSalesGroups,
   listTenantUsers,
@@ -378,6 +380,24 @@ app.post(
     });
 
     res.status(201).json({ order });
+  }
+);
+
+app.get(
+  '/api/admin/commissions',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager', 'finance_manager']),
+  (_req, res) => {
+    res.json({ summaries: listCommissionSummary() });
+  }
+);
+
+app.get(
+  '/api/admin/payouts',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager', 'finance_manager']),
+  (_req, res) => {
+    res.json({ batches: listPayoutBatches() });
   }
 );
 

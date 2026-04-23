@@ -74,6 +74,26 @@ export type Order = {
   placedAt: string;
 };
 
+export type CommissionSummary = {
+  memberId: string;
+  memberName: string;
+  sponsorName: string;
+  activeOrders: number;
+  directRevenue: number;
+  directCommission: number;
+  overrideCommission: number;
+  totalCommission: number;
+};
+
+export type PayoutBatch = {
+  id: string;
+  periodLabel: string;
+  scheduledFor: string;
+  status: 'draft' | 'approved' | 'paid';
+  payeeCount: number;
+  totalAmount: number;
+};
+
 const tenantSetup: TenantSetup = {
   slug: demoTenant.slug,
   name: demoTenant.name,
@@ -383,4 +403,69 @@ export function addOrder(input: Omit<Order, 'id' | 'tenantSlug'>) {
   };
   orders.push(order);
   return listOrders().find((entry) => entry.id === order.id)!;
+}
+
+export function listCommissionSummary() {
+  const tenantMembers = members.filter((member) => member.tenantSlug === demoTenant.slug);
+  const tenantProducts = products.filter((product) => product.tenantSlug === demoTenant.slug);
+  const activeOrders = orders.filter(
+    (order) => order.tenantSlug === demoTenant.slug && order.status === 'active'
+  );
+
+  const summaries = tenantMembers.map((member) => {
+    const memberOrders = activeOrders.filter((order) => order.sellingMemberId === member.id);
+    const directRevenue = memberOrders.reduce(
+      (sum, order) => sum + order.quantity * order.unitPrice,
+      0
+    );
+    const directCommission = memberOrders.reduce((sum, order) => {
+      const product = tenantProducts.find((entry) => entry.id === order.productId);
+      return sum + order.quantity * order.unitPrice * (product?.commissionableRate || 0);
+    }, 0);
+
+    const overrideCommission = activeOrders.reduce((sum, order) => {
+      const sellingMember = tenantMembers.find((entry) => entry.id === order.sellingMemberId);
+      if (sellingMember?.sponsorMemberId !== member.id) return sum;
+      return sum + order.quantity * order.unitPrice * 0.05;
+    }, 0);
+
+    return {
+      memberId: member.id,
+      memberName: `${member.firstName} ${member.lastName}`,
+      sponsorName: memberDisplayName(member.sponsorMemberId),
+      activeOrders: memberOrders.length,
+      directRevenue,
+      directCommission,
+      overrideCommission,
+      totalCommission: directCommission + overrideCommission
+    } satisfies CommissionSummary;
+  });
+
+  return summaries.sort((left, right) => right.totalCommission - left.totalCommission);
+}
+
+export function listPayoutBatches() {
+  const commissionSummary = listCommissionSummary().filter((entry) => entry.totalCommission > 0);
+  const totalAmount = commissionSummary.reduce((sum, entry) => sum + entry.totalCommission, 0);
+
+  const batches: PayoutBatch[] = [
+    {
+      id: 'payout_2026_04',
+      periodLabel: 'April 2026',
+      scheduledFor: '2026-04-30',
+      status: 'draft',
+      payeeCount: commissionSummary.length,
+      totalAmount
+    },
+    {
+      id: 'payout_2026_03',
+      periodLabel: 'March 2026',
+      scheduledFor: '2026-03-31',
+      status: 'paid',
+      payeeCount: 2,
+      totalAmount: 112.5
+    }
+  ];
+
+  return batches;
 }
