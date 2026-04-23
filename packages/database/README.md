@@ -6,6 +6,7 @@ Owns:
 - migrations
 - seed scripts
 - tenant-aware query helpers
+- connection and migration tooling
 
 Initial tables to design first:
 
@@ -23,3 +24,6 @@ Initial tables to design first:
 - commission_rules
 - payouts
 
+Current starter migration:
+
+- [0001_phase1_foundation.sql](./0001_phase1_foundation.sql)

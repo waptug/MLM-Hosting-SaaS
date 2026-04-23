@@ -4,9 +4,20 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "node src/index.js",
-    "build": "echo \"api build placeholder\"",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc --project tsconfig.json",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
     "lint": "echo \"api lint placeholder\""
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "tsx": "^4.20.5"
   }
 }
 

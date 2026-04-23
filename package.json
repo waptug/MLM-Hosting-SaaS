@@ -2,6 +2,7 @@
   "name": "mlm-hosting-saas",
   "private": true,
   "version": "0.1.0",
+  "type": "module",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -10,8 +11,11 @@
     "dev:web": "npm run dev --workspace @mlm-hosting-saas/web",
     "dev:api": "npm run dev --workspace @mlm-hosting-saas/api",
     "dev:jobs": "npm run dev --workspace @mlm-hosting-saas/jobs",
+    "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "build": "npm run build --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
   }
 }
-
