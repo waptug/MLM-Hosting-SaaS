@@ -11,6 +11,7 @@ import {
   Palette,
   Settings2,
   ShieldCheck,
+  ShoppingCart,
   Users
 } from 'lucide-react';
 import './styles.css';
@@ -92,6 +93,32 @@ type Customer = {
   monthlyRevenue: number;
   source: string;
   notes: string;
+};
+
+type Product = {
+  id: string;
+  name: string;
+  sku: string;
+  billingCycle: 'monthly' | 'annual';
+  unitPrice: number;
+  commissionableRate: number;
+  status: 'active' | 'retired';
+};
+
+type Order = {
+  id: string;
+  customerId: string;
+  customerName: string;
+  productId: string;
+  productName: string;
+  sellingMemberId: string;
+  memberName: string;
+  quantity: number;
+  unitPrice: number;
+  totalAmount: number;
+  billingCycle: 'monthly' | 'annual';
+  status: 'pending' | 'active' | 'cancelled';
+  placedAt: string;
 };
 
 const milestones: Milestone[] = [
@@ -847,8 +874,200 @@ function CustomersPanel({
   );
 }
 
+function OrdersPanel({
+  orders,
+  products,
+  customers,
+  members,
+  onOrderAdded
+}: {
+  orders: Order[];
+  products: Product[];
+  customers: Customer[];
+  members: Member[];
+  onOrderAdded: (order: Order) => void;
+}) {
+  const [form, setForm] = React.useState({
+    customerId: customers[0]?.id || '',
+    productId: products[0]?.id || '',
+    sellingMemberId: members[0]?.id || '',
+    quantity: '1',
+    unitPrice: products[0] ? String(products[0].unitPrice) : '0',
+    billingCycle: products[0]?.billingCycle || 'monthly',
+    status: 'pending',
+    placedAt: '2026-04-23'
+  });
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  React.useEffect(() => {
+    if (customers.length && !form.customerId) {
+      setForm((current) => ({ ...current, customerId: customers[0].id }));
+    }
+    if (products.length && !form.productId) {
+      setForm((current) => ({
+        ...current,
+        productId: products[0].id,
+        unitPrice: String(products[0].unitPrice),
+        billingCycle: products[0].billingCycle
+      }));
+    }
+    if (members.length && !form.sellingMemberId) {
+      setForm((current) => ({ ...current, sellingMemberId: members[0].id }));
+    }
+  }, [customers, form.customerId, form.productId, form.sellingMemberId, members, products]);
+
+  function setField(field: keyof typeof form, value: string) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function setProduct(productId: string) {
+    const product = products.find((entry) => entry.id === productId);
+    setForm((current) => ({
+      ...current,
+      productId,
+      unitPrice: product ? String(product.unitPrice) : current.unitPrice,
+      billingCycle: product ? product.billingCycle : current.billingCycle
+    }));
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+
+    const response = await fetch('/api/admin/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...form,
+        quantity: Number(form.quantity || '1'),
+        unitPrice: Number(form.unitPrice || '0')
+      })
+    });
+    const payload = await response.json();
+    setSaving(false);
+
+    if (!response.ok) {
+      setError(payload.error || 'Unable to add order.');
+      return;
+    }
+
+    onOrderAdded(payload.order);
+    setForm({
+      customerId: customers[0]?.id || '',
+      productId: products[0]?.id || '',
+      sellingMemberId: members[0]?.id || '',
+      quantity: '1',
+      unitPrice: products[0] ? String(products[0].unitPrice) : '0',
+      billingCycle: products[0]?.billingCycle || 'monthly',
+      status: 'pending',
+      placedAt: '2026-04-23'
+    });
+  }
+
+  return (
+    <section className="content-grid">
+      <article className="panel">
+        <div className="panel-heading">
+          <h2>Orders</h2>
+          <p>Orders connect the customer record, product sold, and member credited for the sale.</p>
+        </div>
+        <div className="user-list">
+          {orders.map((order) => (
+            <div className="user-row" key={order.id}>
+              <div>
+                <strong>{order.customerName} · {order.productName}</strong>
+                <p>
+                  {order.memberName || 'Unassigned'} · {order.quantity} x ${order.unitPrice} · {order.billingCycle} · {order.placedAt}
+                </p>
+              </div>
+              <span className={`status-pill ${order.status === 'active' ? 'done' : order.status === 'cancelled' ? 'next' : 'active'}`}>
+                ${order.totalAmount}
+              </span>
+            </div>
+          ))}
+        </div>
+      </article>
+
+      <article className="panel">
+        <div className="panel-heading">
+          <h2>Enter Order</h2>
+          <p>Use the hosted product catalog to record new business and feed the later payout engine.</p>
+        </div>
+        <form className="form-grid onboarding-form" onSubmit={submit}>
+          <label>
+            Customer
+            <select value={form.customerId} onChange={(event) => setField('customerId', event.target.value)}>
+              {customers.map((customer) => (
+                <option key={customer.id} value={customer.id}>
+                  {customer.companyName}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Product
+            <select value={form.productId} onChange={(event) => setProduct(event.target.value)}>
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Selling member
+            <select value={form.sellingMemberId} onChange={(event) => setField('sellingMemberId', event.target.value)}>
+              {members.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.firstName} {member.lastName}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Status
+            <select value={form.status} onChange={(event) => setField('status', event.target.value)}>
+              <option value="pending">pending</option>
+              <option value="active">active</option>
+              <option value="cancelled">cancelled</option>
+            </select>
+          </label>
+          <label>
+            Quantity
+            <input value={form.quantity} onChange={(event) => setField('quantity', event.target.value)} />
+          </label>
+          <label>
+            Unit price
+            <input value={form.unitPrice} onChange={(event) => setField('unitPrice', event.target.value)} />
+          </label>
+          <label>
+            Billing cycle
+            <select value={form.billingCycle} onChange={(event) => setField('billingCycle', event.target.value)}>
+              <option value="monthly">monthly</option>
+              <option value="annual">annual</option>
+            </select>
+          </label>
+          <label>
+            Placed at
+            <input value={form.placedAt} onChange={(event) => setField('placedAt', event.target.value)} />
+          </label>
+          {error ? <p className="error full-width">{error}</p> : null}
+          <div className="form-actions full-width">
+            <button type="submit" className="primary" disabled={saving}>
+              <ShoppingCart size={16} />
+              {saving ? 'Saving' : 'Create order'}
+            </button>
+          </div>
+        </form>
+      </article>
+    </section>
+  );
+}
+
 function App() {
-  const [screen, setScreen] = React.useState<'overview' | 'onboarding' | 'users' | 'sales-groups' | 'members' | 'customers'>('overview');
+  const [screen, setScreen] = React.useState<'overview' | 'onboarding' | 'users' | 'sales-groups' | 'members' | 'customers' | 'orders'>('overview');
   const [session, setSession] = React.useState<SessionPayload | null>(null);
   const [setup, setSetup] = React.useState<TenantSetup | null>(null);
   const [users, setUsers] = React.useState<TenantUser[]>([]);
@@ -856,25 +1075,51 @@ function App() {
   const [salesGroups, setSalesGroups] = React.useState<SalesGroup[]>([]);
   const [members, setMembers] = React.useState<Member[]>([]);
   const [customers, setCustomers] = React.useState<Customer[]>([]);
+  const [products, setProducts] = React.useState<Product[]>([]);
+  const [orders, setOrders] = React.useState<Order[]>([]);
 
   async function loadData() {
-    const [sessionResponse, onboardingResponse, usersResponse, rolesResponse, salesGroupsResponse, membersResponse, customersResponse] = await Promise.all([
+    const [
+      sessionResponse,
+      onboardingResponse,
+      usersResponse,
+      rolesResponse,
+      salesGroupsResponse,
+      membersResponse,
+      customersResponse,
+      productsResponse,
+      ordersResponse
+    ] = await Promise.all([
       fetch('/api/session'),
       fetch('/api/admin/onboarding'),
       fetch('/api/admin/tenant-users'),
       fetch('/api/tenant-roles'),
       fetch('/api/admin/sales-groups'),
       fetch('/api/admin/members'),
-      fetch('/api/admin/customers')
+      fetch('/api/admin/customers'),
+      fetch('/api/admin/products'),
+      fetch('/api/admin/orders')
     ]);
-    const [sessionPayload, onboardingPayload, usersPayload, rolesPayload, salesGroupsPayload, membersPayload, customersPayload] = await Promise.all([
+    const [
+      sessionPayload,
+      onboardingPayload,
+      usersPayload,
+      rolesPayload,
+      salesGroupsPayload,
+      membersPayload,
+      customersPayload,
+      productsPayload,
+      ordersPayload
+    ] = await Promise.all([
       sessionResponse.json(),
       onboardingResponse.json(),
       usersResponse.json(),
       rolesResponse.json(),
       salesGroupsResponse.json(),
       membersResponse.json(),
-      customersResponse.json()
+      customersResponse.json(),
+      productsResponse.json(),
+      ordersResponse.json()
     ]);
     setSession(sessionPayload);
     setSetup(onboardingPayload.setup);
@@ -883,6 +1128,8 @@ function App() {
     setSalesGroups(salesGroupsPayload.salesGroups);
     setMembers(membersPayload.members);
     setCustomers(customersPayload.customers);
+    setProducts(productsPayload.products);
+    setOrders(ordersPayload.orders);
   }
 
   React.useEffect(() => {
@@ -952,6 +1199,10 @@ function App() {
         <button className={screen === 'customers' ? 'active' : ''} onClick={() => setScreen('customers')}>
           <BriefcaseBusiness size={16} />
           Customers
+        </button>
+        <button className={screen === 'orders' ? 'active' : ''} onClick={() => setScreen('orders')}>
+          <ShoppingCart size={16} />
+          Orders
         </button>
       </nav>
 
@@ -1035,6 +1286,17 @@ function App() {
             setCustomers((current) =>
               [...current, customer].sort((left, right) => left.companyName.localeCompare(right.companyName))
             );
+          }}
+        />
+      ) : null}
+      {screen === 'orders' ? (
+        <OrdersPanel
+          orders={orders}
+          products={products}
+          customers={customers}
+          members={members}
+          onOrderAdded={(order) => {
+            setOrders((current) => [...current, order].sort((left, right) => right.placedAt.localeCompare(left.placedAt)));
           }}
         />
       ) : null}

@@ -50,6 +50,30 @@ export type Customer = {
   notes: string;
 };
 
+export type Product = {
+  id: string;
+  tenantSlug: string;
+  name: string;
+  sku: string;
+  billingCycle: 'monthly' | 'annual';
+  unitPrice: number;
+  commissionableRate: number;
+  status: 'active' | 'retired';
+};
+
+export type Order = {
+  id: string;
+  tenantSlug: string;
+  customerId: string;
+  productId: string;
+  sellingMemberId: string;
+  quantity: number;
+  unitPrice: number;
+  billingCycle: 'monthly' | 'annual';
+  status: 'pending' | 'active' | 'cancelled';
+  placedAt: string;
+};
+
 const tenantSetup: TenantSetup = {
   slug: demoTenant.slug,
   name: demoTenant.name,
@@ -128,6 +152,66 @@ const customers: Customer[] = [
   }
 ];
 
+const products: Product[] = [
+  {
+    id: 'product_1',
+    tenantSlug: demoTenant.slug,
+    name: 'Reseller Starter Hosting',
+    sku: 'HOST-START',
+    billingCycle: 'monthly',
+    unitPrice: 49,
+    commissionableRate: 0.2,
+    status: 'active'
+  },
+  {
+    id: 'product_2',
+    tenantSlug: demoTenant.slug,
+    name: 'Managed Email Bundle',
+    sku: 'EMAIL-MANAGED',
+    billingCycle: 'monthly',
+    unitPrice: 19,
+    commissionableRate: 0.15,
+    status: 'active'
+  },
+  {
+    id: 'product_3',
+    tenantSlug: demoTenant.slug,
+    name: 'Annual VPS Hosting',
+    sku: 'VPS-ANNUAL',
+    billingCycle: 'annual',
+    unitPrice: 899,
+    commissionableRate: 0.25,
+    status: 'active'
+  }
+];
+
+const orders: Order[] = [
+  {
+    id: 'order_1',
+    tenantSlug: demoTenant.slug,
+    customerId: 'customer_1',
+    productId: 'product_1',
+    sellingMemberId: 'member_1',
+    quantity: 1,
+    unitPrice: 49,
+    billingCycle: 'monthly',
+    status: 'active',
+    placedAt: '2026-04-12'
+  },
+  {
+    id: 'order_2',
+    tenantSlug: demoTenant.slug,
+    customerId: 'customer_2',
+    productId: 'product_2',
+    sellingMemberId: 'member_2',
+    quantity: 2,
+    unitPrice: 19,
+    billingCycle: 'monthly',
+    status: 'pending',
+    placedAt: '2026-04-18'
+  }
+];
+
 function memberDisplayName(memberId: string | null) {
   if (!memberId) return '';
   const member = members.find(
@@ -139,6 +223,18 @@ function memberDisplayName(memberId: string | null) {
 export function hasMember(memberId: string) {
   return members.some(
     (candidate) => candidate.tenantSlug === demoTenant.slug && candidate.id === memberId
+  );
+}
+
+export function hasCustomer(customerId: string) {
+  return customers.some(
+    (candidate) => candidate.tenantSlug === demoTenant.slug && candidate.id === customerId
+  );
+}
+
+export function hasProduct(productId: string) {
+  return products.some(
+    (candidate) => candidate.tenantSlug === demoTenant.slug && candidate.id === productId
   );
 }
 
@@ -258,4 +354,33 @@ export function addCustomer(input: Omit<Customer, 'id' | 'tenantSlug'>) {
   };
   customers.push(customer);
   return listCustomers().find((entry) => entry.id === customer.id)!;
+}
+
+export function listProducts() {
+  return products
+    .filter((product) => product.tenantSlug === demoTenant.slug)
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export function listOrders() {
+  return orders
+    .filter((order) => order.tenantSlug === demoTenant.slug)
+    .map((order) => ({
+      ...order,
+      customerName: customers.find((customer) => customer.id === order.customerId)?.companyName || '',
+      productName: products.find((product) => product.id === order.productId)?.name || '',
+      memberName: memberDisplayName(order.sellingMemberId),
+      totalAmount: order.quantity * order.unitPrice
+    }))
+    .sort((left, right) => right.placedAt.localeCompare(left.placedAt));
+}
+
+export function addOrder(input: Omit<Order, 'id' | 'tenantSlug'>) {
+  const order: Order = {
+    id: `order_${orders.length + 1}`,
+    tenantSlug: demoTenant.slug,
+    ...input
+  };
+  orders.push(order);
+  return listOrders().find((entry) => entry.id === order.id)!;
 }

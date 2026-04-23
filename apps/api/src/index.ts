@@ -8,12 +8,17 @@ import { demoTenant } from './demo-data.js';
 import {
   addCustomer,
   addMember,
+  addOrder,
   addSalesGroup,
   addTenantUser,
   getTenantSetup,
+  hasCustomer,
   hasMember,
+  hasProduct,
   listCustomers,
   listMembers,
+  listOrders,
+  listProducts,
   listSalesGroups,
   listTenantUsers,
   updateTenantSetup
@@ -309,6 +314,70 @@ app.post(
     });
 
     res.status(201).json({ customer });
+  }
+);
+
+app.get(
+  '/api/admin/products',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager', 'recruiter', 'sales_rep']),
+  (_req, res) => {
+    res.json({ products: listProducts() });
+  }
+);
+
+app.get(
+  '/api/admin/orders',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager', 'recruiter', 'sales_rep']),
+  (_req, res) => {
+    res.json({ orders: listOrders() });
+  }
+);
+
+app.post(
+  '/api/admin/orders',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager', 'recruiter', 'sales_rep']),
+  (req, res) => {
+    const body = req.body || {};
+    const customerId = String(body.customerId || '').trim();
+    const productId = String(body.productId || '').trim();
+    const sellingMemberId = String(body.sellingMemberId || '').trim();
+    const quantity = Math.max(1, Number(body.quantity || 1));
+    const unitPrice = Number(body.unitPrice || 0);
+    const billingCycle = body.billingCycle === 'annual' ? 'annual' : 'monthly';
+    const status = ['pending', 'active', 'cancelled'].includes(String(body.status || ''))
+      ? (body.status as 'pending' | 'active' | 'cancelled')
+      : 'pending';
+    const placedAt = String(body.placedAt || '').trim() || new Date().toISOString().slice(0, 10);
+
+    if (!customerId || !productId || !sellingMemberId) {
+      res.status(400).json({
+        error: 'Customer, product, and selling member are required.'
+      });
+      return;
+    }
+
+    if (!hasCustomer(customerId) || !hasProduct(productId) || !hasMember(sellingMemberId)) {
+      res.status(400).json({
+        error: 'Customer, product, and selling member must all exist in this tenant.'
+      });
+      return;
+    }
+
+    const order = addOrder({
+      customerId,
+      productId,
+      sellingMemberId,
+      quantity: Number.isFinite(quantity) ? quantity : 1,
+      unitPrice: Number.isFinite(unitPrice) ? unitPrice : 0,
+      billingCycle,
+      status,
+      placedAt
+    });
+
+    res.status(201).json({ order });
   }
 );
 
