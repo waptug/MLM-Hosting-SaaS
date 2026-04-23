@@ -69,11 +69,35 @@ const workstreams = [
   }
 ];
 
+type SessionPayload = {
+  tenant: {
+    slug: string;
+    name: string;
+    themePreset: string;
+    status: string;
+  };
+  user: {
+    email: string;
+    firstName: string;
+    lastName: string;
+  };
+  role: string;
+};
+
 function StatusPill({ status }: { status: StepStatus }) {
   return <span className={`status-pill ${status}`}>{status === 'done' ? 'Done' : status === 'active' ? 'In Progress' : 'Queued'}</span>;
 }
 
 function App() {
+  const [session, setSession] = React.useState<SessionPayload | null>(null);
+
+  React.useEffect(() => {
+    fetch('/api/session')
+      .then((response) => response.json())
+      .then((payload) => setSession(payload))
+      .catch(() => setSession(null));
+  }, []);
+
   return (
     <main className="app-shell">
       <header className="hero">
@@ -131,16 +155,31 @@ function App() {
 
         <article className="panel">
           <div className="panel-heading">
-            <h2>Phase 1 Deliverables</h2>
-            <p>What this repo is being shaped to support first.</p>
+            <h2>Tenant Session</h2>
+            <p>Current tenant-aware auth foundation from the API layer.</p>
           </div>
-          <ul className="checklist">
-            <li>Tenant-aware API foundation</li>
-            <li>User and role scaffolding</li>
-            <li>Environment and shared config conventions</li>
-            <li>Database migration workspace for PostgreSQL</li>
-            <li>Web app shell for tenant admin workflows</li>
-          </ul>
+          {session ? (
+            <dl className="session-list">
+              <div>
+                <dt>Tenant</dt>
+                <dd>{session.tenant.name}</dd>
+              </div>
+              <div>
+                <dt>Slug</dt>
+                <dd>{session.tenant.slug}</dd>
+              </div>
+              <div>
+                <dt>User</dt>
+                <dd>{session.user.firstName} {session.user.lastName}</dd>
+              </div>
+              <div>
+                <dt>Role</dt>
+                <dd>{session.role}</dd>
+              </div>
+            </dl>
+          ) : (
+            <p className="lede">Session context unavailable until the API is running.</p>
+          )}
         </article>
       </section>
 
@@ -168,4 +207,3 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </React.StrictMode>
 );
-

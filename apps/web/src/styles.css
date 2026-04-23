@@ -154,6 +154,29 @@ h2 {
   padding-left: 18px;
 }
 
+.session-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.session-list div {
+  border-bottom: 1px solid #ece8df;
+  padding-bottom: 10px;
+}
+
+.session-list dt {
+  color: #5e6a64;
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.session-list dd {
+  margin: 0;
+}
+
 .workstreams {
   display: grid;
   gap: 14px;
@@ -178,4 +201,3 @@ h2 {
     grid-template-columns: 1fr;
   }
 }
-
