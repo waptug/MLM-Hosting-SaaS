@@ -5,7 +5,7 @@ import { tenantRoles } from '../../../packages/auth/src/model.js';
 import { attachTenantContext, requireRole } from './auth.js';
 import { config } from './config.js';
 import { demoTenant } from './demo-data.js';
-import { businessRepository } from './repository-provider.js';
+import { businessRepository, businessRepositoryMode } from './repository-provider.js';
 import {
   addTenantUser,
   getTenantSetup,
@@ -43,7 +43,8 @@ app.get('/api/health', (_req, res) => {
     ok: true,
     app: 'mlm-hosting-saas-api',
     env: config.nodeEnv,
-    storageProvider: config.storageProvider
+    storageProvider: config.storageProvider,
+    repositoryMode: businessRepositoryMode
   });
 });
 

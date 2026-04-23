@@ -7,7 +7,7 @@ export const demoTenant: {
   themePreset: string;
   status: 'draft' | 'active';
 } = {
-  id: 'tenant_demo_hosting_group',
+  id: '00000000-0000-0000-0000-000000000001',
   slug: 'demo-hosting-group',
   name: 'Demo Hosting Group',
   themePreset: 'forest',
@@ -16,19 +16,19 @@ export const demoTenant: {
 
 export const demoUsers: AuthenticatedUser[] = [
   {
-    id: 'user_owner_01',
+    id: '00000000-0000-0000-0000-000000000011',
     email: 'owner@example.com',
     firstName: 'Morgan',
     lastName: 'Blake'
   },
   {
-    id: 'user_manager_01',
+    id: '00000000-0000-0000-0000-000000000012',
     email: 'manager@example.com',
     firstName: 'Jamie',
     lastName: 'Cole'
   },
   {
-    id: 'user_rep_01',
+    id: '00000000-0000-0000-0000-000000000013',
     email: 'rep@example.com',
     firstName: 'Taylor',
     lastName: 'Reese'

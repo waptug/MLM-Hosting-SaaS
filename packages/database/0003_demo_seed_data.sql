@@ -1,6 +1,6 @@
 INSERT INTO tenants (id, slug, name, status, theme_preset)
 VALUES (
-  'tenant_demo_hosting_group',
+  '00000000-0000-0000-0000-000000000001',
   'demo-hosting-group',
   'Demo Hosting Group',
   'draft',
@@ -15,9 +15,9 @@ SET
 
 INSERT INTO users (id, email, password_hash, first_name, last_name)
 VALUES
-  ('user_owner_01', 'owner@example.com', 'demo-password-hash', 'Morgan', 'Blake'),
-  ('user_manager_01', 'manager@example.com', 'demo-password-hash', 'Jamie', 'Cole'),
-  ('user_rep_01', 'rep@example.com', 'demo-password-hash', 'Taylor', 'Reese')
+  ('00000000-0000-0000-0000-000000000011', 'owner@example.com', 'demo-password-hash', 'Morgan', 'Blake'),
+  ('00000000-0000-0000-0000-000000000012', 'manager@example.com', 'demo-password-hash', 'Jamie', 'Cole'),
+  ('00000000-0000-0000-0000-000000000013', 'rep@example.com', 'demo-password-hash', 'Taylor', 'Reese')
 ON CONFLICT (email) DO UPDATE
 SET
   first_name = EXCLUDED.first_name,
@@ -26,19 +26,19 @@ SET
 
 INSERT INTO tenant_users (id, tenant_id, user_id, role_key)
 VALUES
-  ('tu_owner_01', 'tenant_demo_hosting_group', 'user_owner_01', 'tenant_owner'),
-  ('tu_manager_01', 'tenant_demo_hosting_group', 'user_manager_01', 'tenant_manager'),
-  ('tu_rep_01', 'tenant_demo_hosting_group', 'user_rep_01', 'sales_rep')
+  ('00000000-0000-0000-0000-000000000021', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000011', 'tenant_owner'),
+  ('00000000-0000-0000-0000-000000000022', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000012', 'tenant_manager'),
+  ('00000000-0000-0000-0000-000000000023', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000013', 'sales_rep')
 ON CONFLICT (tenant_id, user_id, role_key) DO NOTHING;
 
 INSERT INTO sales_groups (id, tenant_id, name, code, region, manager_user_id, status, notes)
 VALUES (
   '00000000-0000-0000-0000-000000000101',
-  'tenant_demo_hosting_group',
+  '00000000-0000-0000-0000-000000000001',
   'Core Hosting Team',
   'CORE',
   'North America',
-  'user_manager_01',
+  '00000000-0000-0000-0000-000000000012',
   'active',
   'Initial launch team for reseller recruiting and hosting plan sales.'
 )
@@ -55,7 +55,7 @@ INSERT INTO members (id, tenant_id, sales_group_id, sponsor_member_id, first_nam
 VALUES
   (
     '00000000-0000-0000-0000-000000000201',
-    'tenant_demo_hosting_group',
+    '00000000-0000-0000-0000-000000000001',
     '00000000-0000-0000-0000-000000000101',
     NULL,
     'Jordan',
@@ -66,7 +66,7 @@ VALUES
   ),
   (
     '00000000-0000-0000-0000-000000000202',
-    'tenant_demo_hosting_group',
+    '00000000-0000-0000-0000-000000000001',
     '00000000-0000-0000-0000-000000000101',
     '00000000-0000-0000-0000-000000000201',
     'Taylor',
@@ -91,7 +91,7 @@ INSERT INTO customers (
 VALUES
   (
     '00000000-0000-0000-0000-000000000301',
-    'tenant_demo_hosting_group',
+    '00000000-0000-0000-0000-000000000001',
     '00000000-0000-0000-0000-000000000201',
     'North Ridge Fitness',
     'Casey Warren',
@@ -104,7 +104,7 @@ VALUES
   ),
   (
     '00000000-0000-0000-0000-000000000302',
-    'tenant_demo_hosting_group',
+    '00000000-0000-0000-0000-000000000001',
     '00000000-0000-0000-0000-000000000202',
     'Blue Harbor Repairs',
     'Morgan Lee',
@@ -131,7 +131,7 @@ INSERT INTO products (id, tenant_id, name, sku, billing_cycle, unit_price, commi
 VALUES
   (
     '00000000-0000-0000-0000-000000000401',
-    'tenant_demo_hosting_group',
+    '00000000-0000-0000-0000-000000000001',
     'Reseller Starter Hosting',
     'HOST-START',
     'monthly',
@@ -141,7 +141,7 @@ VALUES
   ),
   (
     '00000000-0000-0000-0000-000000000402',
-    'tenant_demo_hosting_group',
+    '00000000-0000-0000-0000-000000000001',
     'Managed Email Bundle',
     'EMAIL-MANAGED',
     'monthly',
@@ -151,7 +151,7 @@ VALUES
   ),
   (
     '00000000-0000-0000-0000-000000000403',
-    'tenant_demo_hosting_group',
+    '00000000-0000-0000-0000-000000000001',
     'Annual VPS Hosting',
     'VPS-ANNUAL',
     'annual',
@@ -174,7 +174,7 @@ INSERT INTO orders (
 VALUES
   (
     '00000000-0000-0000-0000-000000000501',
-    'tenant_demo_hosting_group',
+    '00000000-0000-0000-0000-000000000001',
     '00000000-0000-0000-0000-000000000301',
     '00000000-0000-0000-0000-000000000401',
     '00000000-0000-0000-0000-000000000201',
@@ -186,7 +186,7 @@ VALUES
   ),
   (
     '00000000-0000-0000-0000-000000000502',
-    'tenant_demo_hosting_group',
+    '00000000-0000-0000-0000-000000000001',
     '00000000-0000-0000-0000-000000000302',
     '00000000-0000-0000-0000-000000000402',
     '00000000-0000-0000-0000-000000000202',

@@ -2,5 +2,8 @@ import { config } from './config.js';
 import { postgresBusinessRepository } from './postgres-repository.js';
 import { inMemoryBusinessRepository } from './repository.js';
 
+export const businessRepositoryMode =
+  config.storageProvider === 'postgres' ? 'postgres' : 'memory';
+
 export const businessRepository =
-  config.storageProvider === 'postgres' ? postgresBusinessRepository : inMemoryBusinessRepository;
+  businessRepositoryMode === 'postgres' ? postgresBusinessRepository : inMemoryBusinessRepository;

@@ -133,7 +133,16 @@ async function listMembersQuery(pool: DbPool) {
   );
 
   return result.rows.map((row) => ({
-    ...row,
+    id: row.id,
+    tenantSlug: row.tenantSlug,
+    salesGroupId: row.salesGroupId,
+    salesGroupName: row.salesGroupName,
+    firstName: row.firstName,
+    lastName: row.lastName,
+    email: row.email,
+    roleTitle: row.roleTitle,
+    status: row.status,
+    sponsorMemberId: row.sponsorMemberId,
     sponsorName: fullName(row.sponsorFirstName, row.sponsorLastName)
   }));
 }
@@ -180,8 +189,17 @@ async function listCustomersQuery(pool: DbPool) {
   );
 
   return result.rows.map((row) => ({
-    ...row,
+    id: row.id,
+    tenantSlug: row.tenantSlug,
+    ownerMemberId: row.ownerMemberId,
+    companyName: row.companyName,
+    contactName: row.contactName,
+    email: row.email,
+    phone: row.phone,
+    status: row.status,
     monthlyRevenue: Number(row.monthlyRevenue || '0'),
+    source: row.source,
+    notes: row.notes,
     ownerMemberName: fullName(row.ownerFirstName, row.ownerLastName)
   }));
 }
@@ -271,8 +289,18 @@ async function listOrdersQuery(pool: DbPool) {
   return result.rows.map((row) => {
     const unitPrice = Number(row.unitPrice || '0');
     return {
-      ...row,
+      id: row.id,
+      tenantSlug: row.tenantSlug,
+      customerId: row.customerId,
+      customerName: row.customerName,
+      productId: row.productId,
+      productName: row.productName,
+      sellingMemberId: row.sellingMemberId,
       unitPrice,
+      quantity: row.quantity,
+      billingCycle: row.billingCycle,
+      status: row.status,
+      placedAt: row.placedAt,
       memberName: fullName(row.memberFirstName, row.memberLastName),
       totalAmount: row.quantity * unitPrice
     };
