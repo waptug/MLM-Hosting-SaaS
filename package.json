@@ -1,0 +1,17 @@
+{
+  "name": "mlm-hosting-saas",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace @mlm-hosting-saas/web",
+    "dev:api": "npm run dev --workspace @mlm-hosting-saas/api",
+    "dev:jobs": "npm run dev --workspace @mlm-hosting-saas/jobs",
+    "lint": "npm run lint --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present"
+  }
+}
+

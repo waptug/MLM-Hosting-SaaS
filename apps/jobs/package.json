@@ -1,0 +1,12 @@
+{
+  "name": "@mlm-hosting-saas/jobs",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node src/index.js",
+    "build": "echo \"jobs build placeholder\"",
+    "lint": "echo \"jobs lint placeholder\""
+  }
+}
+

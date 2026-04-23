@@ -1,0 +1,12 @@
+{
+  "name": "@mlm-hosting-saas/api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node src/index.js",
+    "build": "echo \"api build placeholder\"",
+    "lint": "echo \"api lint placeholder\""
+  }
+}
+
