@@ -10,8 +10,6 @@ import {
   addMember,
   addOrder,
   addSalesGroup,
-  addTenantUser,
-  getTenantSetup,
   hasCustomer,
   hasMember,
   hasProduct,
@@ -21,7 +19,11 @@ import {
   listOrders,
   listPayoutBatches,
   listProducts,
-  listSalesGroups,
+  listSalesGroups
+} from './repository.js';
+import {
+  addTenantUser,
+  getTenantSetup,
   listTenantUsers,
   updateTenantSetup
 } from './state.js';
