@@ -5,7 +5,19 @@ import { tenantRoles } from '../../../packages/auth/src/model.js';
 import { attachTenantContext, requireRole } from './auth.js';
 import { config } from './config.js';
 import { demoTenant } from './demo-data.js';
-import { addMember, addSalesGroup, addTenantUser, getTenantSetup, listMembers, listSalesGroups, listTenantUsers, updateTenantSetup } from './state.js';
+import {
+  addCustomer,
+  addMember,
+  addSalesGroup,
+  addTenantUser,
+  getTenantSetup,
+  hasMember,
+  listCustomers,
+  listMembers,
+  listSalesGroups,
+  listTenantUsers,
+  updateTenantSetup
+} from './state.js';
 
 type BootstrapTenant = {
   slug: string;
@@ -240,6 +252,63 @@ app.post(
     });
 
     res.status(201).json({ member });
+  }
+);
+
+app.get(
+  '/api/admin/customers',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager', 'recruiter', 'sales_rep']),
+  (_req, res) => {
+    res.json({ customers: listCustomers() });
+  }
+);
+
+app.post(
+  '/api/admin/customers',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager', 'recruiter', 'sales_rep']),
+  (req, res) => {
+    const body = req.body || {};
+    const ownerMemberId = String(body.ownerMemberId || '').trim();
+    const companyName = String(body.companyName || '').trim();
+    const contactName = String(body.contactName || '').trim();
+    const email = String(body.email || '').trim().toLowerCase();
+    const phone = String(body.phone || '').trim();
+    const status = ['lead', 'active', 'past_due', 'churned'].includes(String(body.status || ''))
+      ? (body.status as 'lead' | 'active' | 'past_due' | 'churned')
+      : 'lead';
+    const monthlyRevenue = Number(body.monthlyRevenue || 0);
+    const source = String(body.source || '').trim();
+    const notes = String(body.notes || '').trim();
+
+    if (!ownerMemberId || !companyName || !contactName || !email) {
+      res.status(400).json({
+        error: 'Owner member, company name, contact name, and email are required.'
+      });
+      return;
+    }
+
+    if (!hasMember(ownerMemberId)) {
+      res.status(400).json({
+        error: 'Owner member must match an existing member in this tenant.'
+      });
+      return;
+    }
+
+    const customer = addCustomer({
+      ownerMemberId,
+      companyName,
+      contactName,
+      email,
+      phone,
+      status,
+      monthlyRevenue: Number.isFinite(monthlyRevenue) ? monthlyRevenue : 0,
+      source,
+      notes
+    });
+
+    res.status(201).json({ customer });
   }
 );
 

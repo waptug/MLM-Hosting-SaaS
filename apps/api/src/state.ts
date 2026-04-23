@@ -36,6 +36,20 @@ export type Member = {
   sponsorMemberId: string | null;
 };
 
+export type Customer = {
+  id: string;
+  tenantSlug: string;
+  ownerMemberId: string;
+  companyName: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  status: 'lead' | 'active' | 'past_due' | 'churned';
+  monthlyRevenue: number;
+  source: string;
+  notes: string;
+};
+
 const tenantSetup: TenantSetup = {
   slug: demoTenant.slug,
   name: demoTenant.name,
@@ -84,6 +98,49 @@ const members: Member[] = [
     sponsorMemberId: 'member_1'
   }
 ];
+
+const customers: Customer[] = [
+  {
+    id: 'customer_1',
+    tenantSlug: demoTenant.slug,
+    ownerMemberId: 'member_1',
+    companyName: 'North Ridge Fitness',
+    contactName: 'Casey Warren',
+    email: 'casey@nrfitness.example',
+    phone: '555-0101',
+    status: 'active',
+    monthlyRevenue: 249,
+    source: 'Referral',
+    notes: 'Primary hosting plan with monthly reporting add-on.'
+  },
+  {
+    id: 'customer_2',
+    tenantSlug: demoTenant.slug,
+    ownerMemberId: 'member_2',
+    companyName: 'Blue Harbor Repairs',
+    contactName: 'Morgan Lee',
+    email: 'morgan@blueharbor.example',
+    phone: '555-0147',
+    status: 'lead',
+    monthlyRevenue: 129,
+    source: 'Outbound call',
+    notes: 'Interested in migrating from shared hosting.'
+  }
+];
+
+function memberDisplayName(memberId: string | null) {
+  if (!memberId) return '';
+  const member = members.find(
+    (candidate) => candidate.tenantSlug === demoTenant.slug && candidate.id === memberId
+  );
+  return member ? `${member.firstName} ${member.lastName}` : '';
+}
+
+export function hasMember(memberId: string) {
+  return members.some(
+    (candidate) => candidate.tenantSlug === demoTenant.slug && candidate.id === memberId
+  );
+}
 
 export function getTenantSetup() {
   return tenantSetup;
@@ -168,15 +225,7 @@ export function listMembers() {
     .map((member) => ({
       ...member,
       salesGroupName: salesGroups.find((group) => group.id === member.salesGroupId)?.name || '',
-      sponsorName: member.sponsorMemberId
-        ? members
-            .filter((candidate) => candidate.tenantSlug === demoTenant.slug)
-            .find((candidate) => candidate.id === member.sponsorMemberId)
-            ? `${members.find((candidate) => candidate.id === member.sponsorMemberId)?.firstName} ${
-                members.find((candidate) => candidate.id === member.sponsorMemberId)?.lastName
-              }`
-            : ''
-        : ''
+      sponsorName: memberDisplayName(member.sponsorMemberId)
     }))
     .sort((left, right) => left.lastName.localeCompare(right.lastName));
 }
@@ -189,4 +238,24 @@ export function addMember(input: Omit<Member, 'id' | 'tenantSlug'>) {
   };
   members.push(member);
   return listMembers().find((entry) => entry.id === member.id)!;
+}
+
+export function listCustomers() {
+  return customers
+    .filter((customer) => customer.tenantSlug === demoTenant.slug)
+    .map((customer) => ({
+      ...customer,
+      ownerMemberName: memberDisplayName(customer.ownerMemberId)
+    }))
+    .sort((left, right) => left.companyName.localeCompare(right.companyName));
+}
+
+export function addCustomer(input: Omit<Customer, 'id' | 'tenantSlug'>) {
+  const customer: Customer = {
+    id: `customer_${customers.length + 1}`,
+    tenantSlug: demoTenant.slug,
+    ...input
+  };
+  customers.push(customer);
+  return listCustomers().find((entry) => entry.id === customer.id)!;
 }

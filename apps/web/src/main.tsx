@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import {
+  BriefcaseBusiness,
   BadgeDollarSign,
   Building2,
   MailPlus,
@@ -77,6 +78,20 @@ type Member = {
   status: 'prospect' | 'active' | 'paused';
   sponsorMemberId: string | null;
   sponsorName: string;
+};
+
+type Customer = {
+  id: string;
+  ownerMemberId: string;
+  ownerMemberName: string;
+  companyName: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  status: 'lead' | 'active' | 'past_due' | 'churned';
+  monthlyRevenue: number;
+  source: string;
+  notes: string;
 };
 
 const milestones: Milestone[] = [
@@ -666,31 +681,200 @@ function MembersPanel({
   );
 }
 
+function CustomersPanel({
+  customers,
+  members,
+  onCustomerAdded
+}: {
+  customers: Customer[];
+  members: Member[];
+  onCustomerAdded: (customer: Customer) => void;
+}) {
+  const [form, setForm] = React.useState({
+    ownerMemberId: members[0]?.id || '',
+    companyName: '',
+    contactName: '',
+    email: '',
+    phone: '',
+    status: 'lead',
+    monthlyRevenue: '0',
+    source: '',
+    notes: ''
+  });
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  React.useEffect(() => {
+    if (members.length && !form.ownerMemberId) {
+      setForm((current) => ({ ...current, ownerMemberId: members[0].id }));
+    }
+  }, [members, form.ownerMemberId]);
+
+  function setField(field: keyof typeof form, value: string) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+
+    const response = await fetch('/api/admin/customers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...form,
+        monthlyRevenue: Number(form.monthlyRevenue || '0')
+      })
+    });
+    const payload = await response.json();
+    setSaving(false);
+
+    if (!response.ok) {
+      setError(payload.error || 'Unable to add customer.');
+      return;
+    }
+
+    onCustomerAdded(payload.customer);
+    setForm({
+      ownerMemberId: members[0]?.id || '',
+      companyName: '',
+      contactName: '',
+      email: '',
+      phone: '',
+      status: 'lead',
+      monthlyRevenue: '0',
+      source: '',
+      notes: ''
+    });
+  }
+
+  return (
+    <section className="content-grid">
+      <article className="panel">
+        <div className="panel-heading">
+          <h2>Customers</h2>
+          <p>Customers are attached to members so account ownership, revenue, and later commissions can be traced cleanly.</p>
+        </div>
+        <div className="user-list">
+          {customers.map((customer) => (
+            <div className="user-row" key={customer.id}>
+              <div>
+                <strong>{customer.companyName}</strong>
+                <p>
+                  {customer.contactName} · {customer.ownerMemberName || 'Unassigned'} · ${customer.monthlyRevenue}/mo
+                </p>
+              </div>
+              <span
+                className={`status-pill ${
+                  customer.status === 'active'
+                    ? 'done'
+                    : customer.status === 'past_due' || customer.status === 'churned'
+                      ? 'next'
+                      : 'active'
+                }`}
+              >
+                {customer.status}
+              </span>
+            </div>
+          ))}
+        </div>
+      </article>
+
+      <article className="panel">
+        <div className="panel-heading">
+          <h2>Add Customer</h2>
+          <p>Capture account ownership now so orders, renewals, and payouts have the right attribution later.</p>
+        </div>
+        <form className="form-grid onboarding-form" onSubmit={submit}>
+          <label>
+            Owner member
+            <select value={form.ownerMemberId} onChange={(event) => setField('ownerMemberId', event.target.value)}>
+              {members.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.firstName} {member.lastName}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Status
+            <select value={form.status} onChange={(event) => setField('status', event.target.value)}>
+              <option value="lead">lead</option>
+              <option value="active">active</option>
+              <option value="past_due">past_due</option>
+              <option value="churned">churned</option>
+            </select>
+          </label>
+          <label>
+            Company name
+            <input value={form.companyName} onChange={(event) => setField('companyName', event.target.value)} />
+          </label>
+          <label>
+            Contact name
+            <input value={form.contactName} onChange={(event) => setField('contactName', event.target.value)} />
+          </label>
+          <label>
+            Email
+            <input value={form.email} onChange={(event) => setField('email', event.target.value)} />
+          </label>
+          <label>
+            Phone
+            <input value={form.phone} onChange={(event) => setField('phone', event.target.value)} />
+          </label>
+          <label>
+            Monthly revenue
+            <input value={form.monthlyRevenue} onChange={(event) => setField('monthlyRevenue', event.target.value)} />
+          </label>
+          <label>
+            Lead source
+            <input value={form.source} onChange={(event) => setField('source', event.target.value)} />
+          </label>
+          <label className="full-width">
+            Notes
+            <input value={form.notes} onChange={(event) => setField('notes', event.target.value)} />
+          </label>
+          {error ? <p className="error full-width">{error}</p> : null}
+          <div className="form-actions full-width">
+            <button type="submit" className="primary" disabled={saving}>
+              <BriefcaseBusiness size={16} />
+              {saving ? 'Saving' : 'Add customer'}
+            </button>
+          </div>
+        </form>
+      </article>
+    </section>
+  );
+}
+
 function App() {
-  const [screen, setScreen] = React.useState<'overview' | 'onboarding' | 'users' | 'sales-groups' | 'members'>('overview');
+  const [screen, setScreen] = React.useState<'overview' | 'onboarding' | 'users' | 'sales-groups' | 'members' | 'customers'>('overview');
   const [session, setSession] = React.useState<SessionPayload | null>(null);
   const [setup, setSetup] = React.useState<TenantSetup | null>(null);
   const [users, setUsers] = React.useState<TenantUser[]>([]);
   const [tenantRoles, setTenantRoles] = React.useState<string[]>([]);
   const [salesGroups, setSalesGroups] = React.useState<SalesGroup[]>([]);
   const [members, setMembers] = React.useState<Member[]>([]);
+  const [customers, setCustomers] = React.useState<Customer[]>([]);
 
   async function loadData() {
-    const [sessionResponse, onboardingResponse, usersResponse, rolesResponse, salesGroupsResponse, membersResponse] = await Promise.all([
+    const [sessionResponse, onboardingResponse, usersResponse, rolesResponse, salesGroupsResponse, membersResponse, customersResponse] = await Promise.all([
       fetch('/api/session'),
       fetch('/api/admin/onboarding'),
       fetch('/api/admin/tenant-users'),
       fetch('/api/tenant-roles'),
       fetch('/api/admin/sales-groups'),
-      fetch('/api/admin/members')
+      fetch('/api/admin/members'),
+      fetch('/api/admin/customers')
     ]);
-    const [sessionPayload, onboardingPayload, usersPayload, rolesPayload, salesGroupsPayload, membersPayload] = await Promise.all([
+    const [sessionPayload, onboardingPayload, usersPayload, rolesPayload, salesGroupsPayload, membersPayload, customersPayload] = await Promise.all([
       sessionResponse.json(),
       onboardingResponse.json(),
       usersResponse.json(),
       rolesResponse.json(),
       salesGroupsResponse.json(),
-      membersResponse.json()
+      membersResponse.json(),
+      customersResponse.json()
     ]);
     setSession(sessionPayload);
     setSetup(onboardingPayload.setup);
@@ -698,6 +882,7 @@ function App() {
     setTenantRoles(rolesPayload.roles);
     setSalesGroups(salesGroupsPayload.salesGroups);
     setMembers(membersPayload.members);
+    setCustomers(customersPayload.customers);
   }
 
   React.useEffect(() => {
@@ -763,6 +948,10 @@ function App() {
         <button className={screen === 'members' ? 'active' : ''} onClick={() => setScreen('members')}>
           <ListTree size={16} />
           Members
+        </button>
+        <button className={screen === 'customers' ? 'active' : ''} onClick={() => setScreen('customers')}>
+          <BriefcaseBusiness size={16} />
+          Customers
         </button>
       </nav>
 
@@ -835,6 +1024,17 @@ function App() {
           salesGroups={salesGroups}
           onMemberAdded={(member) => {
             setMembers((current) => [...current, member].sort((left, right) => left.lastName.localeCompare(right.lastName)));
+          }}
+        />
+      ) : null}
+      {screen === 'customers' ? (
+        <CustomersPanel
+          customers={customers}
+          members={members}
+          onCustomerAdded={(customer) => {
+            setCustomers((current) =>
+              [...current, customer].sort((left, right) => left.companyName.localeCompare(right.companyName))
+            );
           }}
         />
       ) : null}
