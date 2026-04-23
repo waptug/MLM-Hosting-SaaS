@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import {
   BriefcaseBusiness,
   BadgeDollarSign,
+  BookOpenText,
   Building2,
   MailPlus,
   LayoutDashboard,
@@ -141,6 +142,12 @@ type PayoutBatch = {
   totalAmount: number;
 };
 
+type ManualSection = {
+  title: string;
+  summary: string;
+  items: string[];
+};
+
 const milestones: Milestone[] = [
   {
     title: 'Tenant foundation',
@@ -202,6 +209,82 @@ const blankSetup: TenantSetup = {
   brandLabel: '',
   primaryDomain: ''
 };
+
+const manualSections: ManualSection[] = [
+  {
+    title: '1. Workspace Setup',
+    summary: 'Use the onboarding and user screens first so the tenant has branding, ownership, and operating roles in place.',
+    items: [
+      'Open Onboarding and set the tenant name, slug, brand label, support email, primary domain, theme preset, and status.',
+      'Keep the workspace in draft status while you are configuring the reseller organization and testing workflows.',
+      'Open Users and add the owner, managers, recruiters, sales reps, and finance users who will operate the tenant.',
+      'Use finance_manager for payout review and tenant_manager for daily admin operations.'
+    ]
+  },
+  {
+    title: '2. Sales Organization',
+    summary: 'Build the sales structure before loading customers and orders so attribution and hierarchy reports remain correct.',
+    items: [
+      'Create one or more Sales Groups for teams, regions, business units, or hosted brand programs.',
+      'Add Members and assign each member to a sales group.',
+      'Set a sponsor on each downstream member when you need multilevel override tracking.',
+      'Use status values consistently: prospect for pipeline reps, active for commissionable reps, paused for temporary inactivity.'
+    ]
+  },
+  {
+    title: '3. Customer Management',
+    summary: 'Every customer should have a clear owner member so revenue and commissions are tied to the right person.',
+    items: [
+      'Create Customers from the customer tab after the member hierarchy exists.',
+      'Select the owner member carefully because this relationship drives downstream attribution.',
+      'Use lead, active, past_due, and churned as operational states for customer lifecycle reporting.',
+      'Capture monthly revenue, lead source, and notes so managers can review pipeline quality and retention risk.'
+    ]
+  },
+  {
+    title: '4. Orders and Revenue',
+    summary: 'Orders are the source record for revenue and commission calculations in this SaaS.',
+    items: [
+      'Use Orders to select the customer, product, selling member, quantity, billing cycle, price, status, and placed date.',
+      'Pending orders represent unconfirmed or not-yet-billable revenue and do not count toward current commission totals.',
+      'Active orders are treated as commissionable revenue in the current ruleset.',
+      'If pricing differs from the catalog default, change unit price on the order before saving.'
+    ]
+  },
+  {
+    title: '5. Commissions and Payouts',
+    summary: 'The commission screen summarizes current direct revenue and sponsor override totals from active orders.',
+    items: [
+      'Direct commission is calculated from the product commissionable rate applied to active order revenue.',
+      'Override commission is currently calculated as 5% of active direct-downline order revenue.',
+      'Draft payout batches represent a payable period snapshot and are intended for finance review.',
+      'Paid batches are historical references only in the current build; payout approval actions are still planned.'
+    ]
+  },
+  {
+    title: '6. Recommended Operating Workflow',
+    summary: 'This is the clean order of operations for a new tenant or reseller launch.',
+    items: [
+      'Configure onboarding and tenant users.',
+      'Create sales groups.',
+      'Create members and assign sponsors.',
+      'Create customers.',
+      'Enter orders.',
+      'Review commissions and payout totals.',
+      'Repeat customer and order entry as the business grows.'
+    ]
+  },
+  {
+    title: '7. Current Build Limits',
+    summary: 'These notes matter for operating the current version correctly.',
+    items: [
+      'Tenant onboarding and tenant user management still rely on demo state and are not yet persisted to PostgreSQL.',
+      'The business domain is now PostgreSQL-backed for groups, members, customers, products, orders, commissions, and payouts.',
+      'Authentication, invitations, billing, payout approvals, and audit logging are still pending production work.',
+      'For the current local environment, the app expects DATABASE_URL to point at the Postgres container.'
+    ]
+  }
+];
 
 function StatusPill({ status }: { status: StepStatus }) {
   return <span className={`status-pill ${status}`}>{status === 'done' ? 'Done' : status === 'active' ? 'In Progress' : 'Queued'}</span>;
@@ -1177,8 +1260,32 @@ function CommissionsPanel({
   );
 }
 
+function ManualPanel() {
+  return (
+    <section className="panel manual-panel">
+      <div className="panel-heading">
+        <h2>User Manual</h2>
+        <p>Operational guide for tenant admins, recruiters, sales managers, and finance users.</p>
+      </div>
+      <div className="manual-grid">
+        {manualSections.map((section) => (
+          <article className="manual-section" key={section.title}>
+            <h3>{section.title}</h3>
+            <p>{section.summary}</p>
+            <ul className="manual-list">
+              {section.items.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function App() {
-  const [screen, setScreen] = React.useState<'overview' | 'onboarding' | 'users' | 'sales-groups' | 'members' | 'customers' | 'orders' | 'commissions'>('overview');
+  const [screen, setScreen] = React.useState<'overview' | 'onboarding' | 'users' | 'sales-groups' | 'members' | 'customers' | 'orders' | 'commissions' | 'manual'>('overview');
   const [session, setSession] = React.useState<SessionPayload | null>(null);
   const [setup, setSetup] = React.useState<TenantSetup | null>(null);
   const [users, setUsers] = React.useState<TenantUser[]>([]);
@@ -1344,6 +1451,10 @@ function App() {
           <BadgeDollarSign size={16} />
           Commissions
         </button>
+        <button className={screen === 'manual' ? 'active' : ''} onClick={() => setScreen('manual')}>
+          <BookOpenText size={16} />
+          Manual
+        </button>
       </nav>
 
       {screen === 'overview' ? (
@@ -1444,6 +1555,7 @@ function App() {
       {screen === 'commissions' ? (
         <CommissionsPanel summaries={commissionSummaries} payouts={payoutBatches} />
       ) : null}
+      {screen === 'manual' ? <ManualPanel /> : null}
     </main>
   );
 }
