@@ -1,11 +1,17 @@
 import type { AuthenticatedUser, RoleKey } from '../../../packages/auth/src/model.js';
 
-export const demoTenant = {
+export const demoTenant: {
+  id: string;
+  slug: string;
+  name: string;
+  themePreset: string;
+  status: 'draft' | 'active';
+} = {
   id: 'tenant_demo_hosting_group',
   slug: 'demo-hosting-group',
   name: 'Demo Hosting Group',
   themePreset: 'forest',
-  status: 'draft' as const
+  status: 'draft'
 };
 
 export const demoUsers: AuthenticatedUser[] = [
