@@ -27,3 +27,14 @@ Initial tables to design first:
 Current starter migration:
 
 - [0001_phase1_foundation.sql](./0001_phase1_foundation.sql)
+
+Runtime files:
+
+- [src/db.ts](./src/db.ts)
+- [src/migrate.ts](./src/migrate.ts)
+
+Run migrations:
+
+```bash
+npm run db:migrate
+```

@@ -11,6 +11,7 @@
     "dev:web": "npm run dev --workspace @mlm-hosting-saas/web",
     "dev:api": "npm run dev --workspace @mlm-hosting-saas/api",
     "dev:jobs": "npm run dev --workspace @mlm-hosting-saas/jobs",
+    "db:migrate": "npm run migrate --workspace @mlm-hosting-saas/database",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "build": "npm run build --workspaces --if-present"
