@@ -27,6 +27,20 @@ Initial tables to design first:
 Current starter migration:
 
 - [0001_phase1_foundation.sql](./0001_phase1_foundation.sql)
+- [0002_core_sales_entities.sql](./0002_core_sales_entities.sql)
+
+Core entity coverage now includes:
+
+- `sales_groups`
+- `members`
+- `customers`
+- `products`
+- `orders`
+
+Current runtime note:
+
+- the API now uses a dedicated repository module for these entities
+- the next migration step is swapping that repository from in-memory data to PostgreSQL queries
 
 Runtime files:
 
