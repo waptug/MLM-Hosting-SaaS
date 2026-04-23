@@ -1,9 +1,10 @@
 import { config } from './config.js';
 import { postgresBusinessRepository } from './postgres-repository.js';
-import { inMemoryBusinessRepository } from './repository.js';
 
-export const businessRepositoryMode =
-  config.storageProvider === 'postgres' ? 'postgres' : 'memory';
+if (!config.databaseUrl) {
+  throw new Error('DATABASE_URL is required for the API business repository.');
+}
 
-export const businessRepository =
-  businessRepositoryMode === 'postgres' ? postgresBusinessRepository : inMemoryBusinessRepository;
+export const businessRepositoryMode = 'postgres';
+
+export const businessRepository = postgresBusinessRepository;

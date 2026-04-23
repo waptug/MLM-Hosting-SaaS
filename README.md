@@ -37,7 +37,7 @@ infra/
 - order entry tied to members and customers
 - derived commission summaries and payout batches
 
-The current implementation is a working SaaS foundation and demo workflow. It is not yet a production-complete platform. The API is still using in-memory demo state for the business entities while the PostgreSQL package and migration tooling are being staged.
+The current implementation is a working SaaS foundation and demo workflow running on PostgreSQL for the business domain. It is not yet a production-complete platform.
 
 ## Commands
 
@@ -47,6 +47,12 @@ npm run typecheck
 npm run build
 npm run dev:web
 npm run dev:api
+```
+
+Required runtime environment:
+
+```bash
+export DATABASE_URL=postgresql://mlm:mlm_dev_password@127.0.0.1:5433/mlm_hosting_saas
 ```
 
 Default local URLs:
@@ -64,10 +70,10 @@ Default local URLs:
 - `GET /api/admin/orders`
 - `GET /api/admin/commissions`
 - the same order and commission reads through the Vite proxy
+- local Postgres-backed write validation through `POST /api/admin/sales-groups`
 
 ## Next Production-Critical Work
 
-- move tenant, user, member, customer, product, and order state fully into PostgreSQL
 - replace demo auth with real authentication, invitations, sessions, and password flows
 - add persisted commission plans and payout approval actions
 - add audit logging, billing/subscription handling, and background jobs

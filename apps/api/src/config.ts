@@ -8,7 +8,6 @@ export const config = {
   port: Number(process.env.PORT || 4000),
   webPort: Number(process.env.WEB_PORT || 5174),
   databaseUrl: process.env.DATABASE_URL || '',
-  storageProvider:
-    process.env.STORAGE_PROVIDER === 'postgres' && process.env.DATABASE_URL ? 'postgres' : 'memory',
+  storageProvider: 'postgres',
   sessionSecret: process.env.SESSION_SECRET || 'change-me'
 };
