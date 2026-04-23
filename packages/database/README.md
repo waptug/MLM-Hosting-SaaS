@@ -28,6 +28,7 @@ Current starter migration:
 
 - [0001_phase1_foundation.sql](./0001_phase1_foundation.sql)
 - [0002_core_sales_entities.sql](./0002_core_sales_entities.sql)
+- [0003_demo_seed_data.sql](./0003_demo_seed_data.sql)
 
 Core entity coverage now includes:
 
@@ -40,7 +41,8 @@ Core entity coverage now includes:
 Current runtime note:
 
 - the API now uses a dedicated repository module for these entities
-- the next migration step is swapping that repository from in-memory data to PostgreSQL queries
+- the Postgres repository now supports core reads and primary writes for the seeded demo tenant
+- `STORAGE_PROVIDER=postgres` also requires a valid `DATABASE_URL`
 
 Runtime files:
 
