@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc --project tsconfig.json",
+    "start": "node dist/apps/api/src/index.js",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "lint": "echo \"api lint placeholder\""
   },

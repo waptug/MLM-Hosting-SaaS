@@ -47,6 +47,7 @@ npm run typecheck
 npm run build
 npm run dev:web
 npm run dev:api
+npm run start:api
 ```
 
 Required runtime environment:
@@ -59,6 +60,12 @@ Default local URLs:
 
 - Web: `http://localhost:5174/`
 - API: `http://127.0.0.1:4000/`
+
+Built API startup:
+
+```bash
+DATABASE_URL=postgresql://mlm:mlm_dev_password@127.0.0.1:5433/mlm_hosting_saas npm run start:api
+```
 
 ## Verified
 
