@@ -9,6 +9,23 @@ import type {
   SalesGroup
 } from './state.js';
 
+export type BusinessRepository = {
+  hasMember(memberId: string): boolean | Promise<boolean>;
+  hasCustomer(customerId: string): boolean | Promise<boolean>;
+  hasProduct(productId: string): boolean | Promise<boolean>;
+  listSalesGroups(): Array<SalesGroup> | Promise<Array<SalesGroup>>;
+  addSalesGroup(input: Omit<SalesGroup, 'id' | 'tenantSlug'>): SalesGroup | Promise<SalesGroup>;
+  listMembers(): Array<Member & { salesGroupName: string; sponsorName: string }> | Promise<Array<Member & { salesGroupName: string; sponsorName: string }>>;
+  addMember(input: Omit<Member, 'id' | 'tenantSlug'>): (Member & { salesGroupName: string; sponsorName: string }) | Promise<Member & { salesGroupName: string; sponsorName: string }>;
+  listCustomers(): Array<Customer & { ownerMemberName: string }> | Promise<Array<Customer & { ownerMemberName: string }>>;
+  addCustomer(input: Omit<Customer, 'id' | 'tenantSlug'>): (Customer & { ownerMemberName: string }) | Promise<Customer & { ownerMemberName: string }>;
+  listProducts(): Array<Product> | Promise<Array<Product>>;
+  listOrders(): Array<Order & { customerName: string; productName: string; memberName: string; totalAmount: number }> | Promise<Array<Order & { customerName: string; productName: string; memberName: string; totalAmount: number }>>;
+  addOrder(input: Omit<Order, 'id' | 'tenantSlug'>): (Order & { customerName: string; productName: string; memberName: string; totalAmount: number }) | Promise<Order & { customerName: string; productName: string; memberName: string; totalAmount: number }>;
+  listCommissionSummary(): Array<CommissionSummary> | Promise<Array<CommissionSummary>>;
+  listPayoutBatches(): Array<PayoutBatch> | Promise<Array<PayoutBatch>>;
+};
+
 const salesGroups: SalesGroup[] = [
   {
     id: 'group_1',
@@ -144,31 +161,31 @@ function memberDisplayName(memberId: string | null) {
   return member ? `${member.firstName} ${member.lastName}` : '';
 }
 
-export function hasMember(memberId: string) {
+function hasMember(memberId: string) {
   return members.some(
     (candidate) => candidate.tenantSlug === demoTenant.slug && candidate.id === memberId
   );
 }
 
-export function hasCustomer(customerId: string) {
+function hasCustomer(customerId: string) {
   return customers.some(
     (candidate) => candidate.tenantSlug === demoTenant.slug && candidate.id === customerId
   );
 }
 
-export function hasProduct(productId: string) {
+function hasProduct(productId: string) {
   return products.some(
     (candidate) => candidate.tenantSlug === demoTenant.slug && candidate.id === productId
   );
 }
 
-export function listSalesGroups() {
+function listSalesGroups() {
   return salesGroups
     .filter((group) => group.tenantSlug === demoTenant.slug)
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
-export function addSalesGroup(input: Omit<SalesGroup, 'id' | 'tenantSlug'>) {
+function addSalesGroup(input: Omit<SalesGroup, 'id' | 'tenantSlug'>) {
   const salesGroup: SalesGroup = {
     id: `group_${salesGroups.length + 1}`,
     tenantSlug: demoTenant.slug,
@@ -178,7 +195,7 @@ export function addSalesGroup(input: Omit<SalesGroup, 'id' | 'tenantSlug'>) {
   return salesGroup;
 }
 
-export function listMembers() {
+function listMembers() {
   return members
     .filter((member) => member.tenantSlug === demoTenant.slug)
     .map((member) => ({
@@ -189,7 +206,7 @@ export function listMembers() {
     .sort((left, right) => left.lastName.localeCompare(right.lastName));
 }
 
-export function addMember(input: Omit<Member, 'id' | 'tenantSlug'>) {
+function addMember(input: Omit<Member, 'id' | 'tenantSlug'>) {
   const member: Member = {
     id: `member_${members.length + 1}`,
     tenantSlug: demoTenant.slug,
@@ -199,7 +216,7 @@ export function addMember(input: Omit<Member, 'id' | 'tenantSlug'>) {
   return listMembers().find((entry) => entry.id === member.id)!;
 }
 
-export function listCustomers() {
+function listCustomers() {
   return customers
     .filter((customer) => customer.tenantSlug === demoTenant.slug)
     .map((customer) => ({
@@ -209,7 +226,7 @@ export function listCustomers() {
     .sort((left, right) => left.companyName.localeCompare(right.companyName));
 }
 
-export function addCustomer(input: Omit<Customer, 'id' | 'tenantSlug'>) {
+function addCustomer(input: Omit<Customer, 'id' | 'tenantSlug'>) {
   const customer: Customer = {
     id: `customer_${customers.length + 1}`,
     tenantSlug: demoTenant.slug,
@@ -219,13 +236,13 @@ export function addCustomer(input: Omit<Customer, 'id' | 'tenantSlug'>) {
   return listCustomers().find((entry) => entry.id === customer.id)!;
 }
 
-export function listProducts() {
+function listProducts() {
   return products
     .filter((product) => product.tenantSlug === demoTenant.slug)
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
-export function listOrders() {
+function listOrders() {
   return orders
     .filter((order) => order.tenantSlug === demoTenant.slug)
     .map((order) => ({
@@ -238,7 +255,7 @@ export function listOrders() {
     .sort((left, right) => right.placedAt.localeCompare(left.placedAt));
 }
 
-export function addOrder(input: Omit<Order, 'id' | 'tenantSlug'>) {
+function addOrder(input: Omit<Order, 'id' | 'tenantSlug'>) {
   const order: Order = {
     id: `order_${orders.length + 1}`,
     tenantSlug: demoTenant.slug,
@@ -248,7 +265,7 @@ export function addOrder(input: Omit<Order, 'id' | 'tenantSlug'>) {
   return listOrders().find((entry) => entry.id === order.id)!;
 }
 
-export function listCommissionSummary() {
+function listCommissionSummary() {
   const tenantMembers = members.filter((member) => member.tenantSlug === demoTenant.slug);
   const tenantProducts = products.filter((product) => product.tenantSlug === demoTenant.slug);
   const activeOrders = orders.filter(
@@ -287,7 +304,7 @@ export function listCommissionSummary() {
   return summaries.sort((left, right) => right.totalCommission - left.totalCommission);
 }
 
-export function listPayoutBatches() {
+function listPayoutBatches() {
   const commissionSummary = listCommissionSummary().filter((entry) => entry.totalCommission > 0);
   const totalAmount = commissionSummary.reduce((sum, entry) => sum + entry.totalCommission, 0);
 
@@ -312,3 +329,20 @@ export function listPayoutBatches() {
 
   return batches;
 }
+
+export const inMemoryBusinessRepository: BusinessRepository = {
+  hasMember,
+  hasCustomer,
+  hasProduct,
+  listSalesGroups,
+  addSalesGroup,
+  listMembers,
+  addMember,
+  listCustomers,
+  addCustomer,
+  listProducts,
+  listOrders,
+  addOrder,
+  listCommissionSummary,
+  listPayoutBatches
+};

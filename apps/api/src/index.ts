@@ -5,22 +5,7 @@ import { tenantRoles } from '../../../packages/auth/src/model.js';
 import { attachTenantContext, requireRole } from './auth.js';
 import { config } from './config.js';
 import { demoTenant } from './demo-data.js';
-import {
-  addCustomer,
-  addMember,
-  addOrder,
-  addSalesGroup,
-  hasCustomer,
-  hasMember,
-  hasProduct,
-  listCommissionSummary,
-  listCustomers,
-  listMembers,
-  listOrders,
-  listPayoutBatches,
-  listProducts,
-  listSalesGroups
-} from './repository.js';
+import { businessRepository } from './repository-provider.js';
 import {
   addTenantUser,
   getTenantSetup,
@@ -57,7 +42,8 @@ app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
     app: 'mlm-hosting-saas-api',
-    env: config.nodeEnv
+    env: config.nodeEnv,
+    storageProvider: config.storageProvider
   });
 });
 
@@ -69,7 +55,8 @@ app.get('/api/bootstrap', (_req, res) => {
       multiTenant: true,
       whiteLabel: true,
       payouts: 'planned',
-      commissionEngine: 'planned'
+      commissionEngine: 'planned',
+      storageProvider: config.storageProvider
     },
     nextBuildTargets: [
       'tenant tables and migrations',
@@ -180,8 +167,8 @@ app.get(
   '/api/admin/sales-groups',
   attachTenantContext,
   requireRole(['tenant_owner', 'tenant_manager', 'recruiter']),
-  (_req, res) => {
-    res.json({ salesGroups: listSalesGroups() });
+  async (_req, res) => {
+    res.json({ salesGroups: await businessRepository.listSalesGroups() });
   }
 );
 
@@ -189,7 +176,7 @@ app.post(
   '/api/admin/sales-groups',
   attachTenantContext,
   requireRole(['tenant_owner', 'tenant_manager']),
-  (req, res) => {
+  async (req, res) => {
     const body = req.body || {};
     const name = String(body.name || '').trim();
     const code = String(body.code || '').trim().toUpperCase();
@@ -205,7 +192,7 @@ app.post(
       return;
     }
 
-    const salesGroup = addSalesGroup({
+    const salesGroup = await businessRepository.addSalesGroup({
       name,
       code,
       region,
@@ -222,8 +209,8 @@ app.get(
   '/api/admin/members',
   attachTenantContext,
   requireRole(['tenant_owner', 'tenant_manager', 'recruiter']),
-  (_req, res) => {
-    res.json({ members: listMembers() });
+  async (_req, res) => {
+    res.json({ members: await businessRepository.listMembers() });
   }
 );
 
@@ -231,7 +218,7 @@ app.post(
   '/api/admin/members',
   attachTenantContext,
   requireRole(['tenant_owner', 'tenant_manager', 'recruiter']),
-  (req, res) => {
+  async (req, res) => {
     const body = req.body || {};
     const salesGroupId = String(body.salesGroupId || '').trim();
     const firstName = String(body.firstName || '').trim();
@@ -250,7 +237,7 @@ app.post(
       return;
     }
 
-    const member = addMember({
+    const member = await businessRepository.addMember({
       salesGroupId,
       firstName,
       lastName,
@@ -268,8 +255,8 @@ app.get(
   '/api/admin/customers',
   attachTenantContext,
   requireRole(['tenant_owner', 'tenant_manager', 'recruiter', 'sales_rep']),
-  (_req, res) => {
-    res.json({ customers: listCustomers() });
+  async (_req, res) => {
+    res.json({ customers: await businessRepository.listCustomers() });
   }
 );
 
@@ -277,7 +264,7 @@ app.post(
   '/api/admin/customers',
   attachTenantContext,
   requireRole(['tenant_owner', 'tenant_manager', 'recruiter', 'sales_rep']),
-  (req, res) => {
+  async (req, res) => {
     const body = req.body || {};
     const ownerMemberId = String(body.ownerMemberId || '').trim();
     const companyName = String(body.companyName || '').trim();
@@ -298,14 +285,14 @@ app.post(
       return;
     }
 
-    if (!hasMember(ownerMemberId)) {
+    if (!(await businessRepository.hasMember(ownerMemberId))) {
       res.status(400).json({
         error: 'Owner member must match an existing member in this tenant.'
       });
       return;
     }
 
-    const customer = addCustomer({
+    const customer = await businessRepository.addCustomer({
       ownerMemberId,
       companyName,
       contactName,
@@ -325,8 +312,8 @@ app.get(
   '/api/admin/products',
   attachTenantContext,
   requireRole(['tenant_owner', 'tenant_manager', 'recruiter', 'sales_rep']),
-  (_req, res) => {
-    res.json({ products: listProducts() });
+  async (_req, res) => {
+    res.json({ products: await businessRepository.listProducts() });
   }
 );
 
@@ -334,8 +321,8 @@ app.get(
   '/api/admin/orders',
   attachTenantContext,
   requireRole(['tenant_owner', 'tenant_manager', 'recruiter', 'sales_rep']),
-  (_req, res) => {
-    res.json({ orders: listOrders() });
+  async (_req, res) => {
+    res.json({ orders: await businessRepository.listOrders() });
   }
 );
 
@@ -343,7 +330,7 @@ app.post(
   '/api/admin/orders',
   attachTenantContext,
   requireRole(['tenant_owner', 'tenant_manager', 'recruiter', 'sales_rep']),
-  (req, res) => {
+  async (req, res) => {
     const body = req.body || {};
     const customerId = String(body.customerId || '').trim();
     const productId = String(body.productId || '').trim();
@@ -363,14 +350,18 @@ app.post(
       return;
     }
 
-    if (!hasCustomer(customerId) || !hasProduct(productId) || !hasMember(sellingMemberId)) {
+    if (
+      !(await businessRepository.hasCustomer(customerId)) ||
+      !(await businessRepository.hasProduct(productId)) ||
+      !(await businessRepository.hasMember(sellingMemberId))
+    ) {
       res.status(400).json({
         error: 'Customer, product, and selling member must all exist in this tenant.'
       });
       return;
     }
 
-    const order = addOrder({
+    const order = await businessRepository.addOrder({
       customerId,
       productId,
       sellingMemberId,
@@ -389,8 +380,8 @@ app.get(
   '/api/admin/commissions',
   attachTenantContext,
   requireRole(['tenant_owner', 'tenant_manager', 'finance_manager']),
-  (_req, res) => {
-    res.json({ summaries: listCommissionSummary() });
+  async (_req, res) => {
+    res.json({ summaries: await businessRepository.listCommissionSummary() });
   }
 );
 
@@ -398,8 +389,8 @@ app.get(
   '/api/admin/payouts',
   attachTenantContext,
   requireRole(['tenant_owner', 'tenant_manager', 'finance_manager']),
-  (_req, res) => {
-    res.json({ batches: listPayoutBatches() });
+  async (_req, res) => {
+    res.json({ batches: await businessRepository.listPayoutBatches() });
   }
 );
 
