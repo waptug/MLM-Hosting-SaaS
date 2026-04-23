@@ -48,3 +48,39 @@ export function listTenantUsers(): Array<AuthenticatedUser & { role: RoleKey }> 
       };
     });
 }
+
+export function addTenantUser(input: {
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: RoleKey;
+}) {
+  const normalizedEmail = input.email.trim().toLowerCase();
+  const existingUser = demoUsers.find((user) => user.email === normalizedEmail);
+
+  if (!existingUser) {
+    demoUsers.push({
+      id: `user_${demoUsers.length + 1}`,
+      email: normalizedEmail,
+      firstName: input.firstName.trim(),
+      lastName: input.lastName.trim()
+    });
+  }
+
+  const existingMembership = demoMemberships.find(
+    (membership) =>
+      membership.tenantSlug === demoTenant.slug && membership.userEmail === normalizedEmail
+  );
+
+  if (existingMembership) {
+    existingMembership.role = input.role;
+  } else {
+    demoMemberships.push({
+      tenantSlug: demoTenant.slug,
+      userEmail: normalizedEmail,
+      role: input.role
+    });
+  }
+
+  return listTenantUsers().find((user) => user.email === normalizedEmail)!;
+}

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import {
   BadgeDollarSign,
   Building2,
+  MailPlus,
   LayoutDashboard,
   Palette,
   Settings2,
@@ -43,6 +44,14 @@ type TenantSetup = {
   supportEmail: string;
   brandLabel: string;
   primaryDomain: string;
+};
+
+type TenantUser = {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: string;
 };
 
 const milestones: Milestone[] = [
@@ -250,22 +259,148 @@ function OverviewPanel({ session, setup }: { session: SessionPayload | null; set
   );
 }
 
+function UsersPanel({
+  users,
+  tenantRoles,
+  onUserAdded
+}: {
+  users: TenantUser[];
+  tenantRoles: string[];
+  onUserAdded: (user: TenantUser) => void;
+}) {
+  const [form, setForm] = React.useState({
+    email: '',
+    firstName: '',
+    lastName: '',
+    role: tenantRoles[0] || 'sales_rep'
+  });
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  React.useEffect(() => {
+    if (tenantRoles.length && !tenantRoles.includes(form.role)) {
+      setForm((current) => ({ ...current, role: tenantRoles[0] }));
+    }
+  }, [tenantRoles, form.role]);
+
+  function setField(field: 'email' | 'firstName' | 'lastName' | 'role', value: string) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+
+    const response = await fetch('/api/admin/tenant-users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form)
+    });
+    const payload = await response.json();
+    setSaving(false);
+
+    if (!response.ok) {
+      setError(payload.error || 'Unable to add tenant user.');
+      return;
+    }
+
+    onUserAdded(payload.user);
+    setForm({
+      email: '',
+      firstName: '',
+      lastName: '',
+      role: tenantRoles[0] || 'sales_rep'
+    });
+  }
+
+  return (
+    <section className="content-grid">
+      <article className="panel">
+        <div className="panel-heading">
+          <h2>Tenant Users</h2>
+          <p>Current users and role assignments for this reseller workspace.</p>
+        </div>
+        <div className="user-list">
+          {users.map((user) => (
+            <div className="user-row" key={user.id}>
+              <div>
+                <strong>
+                  {user.firstName} {user.lastName}
+                </strong>
+                <p>{user.email}</p>
+              </div>
+              <span className="status-pill next">{user.role}</span>
+            </div>
+          ))}
+        </div>
+      </article>
+
+      <article className="panel">
+        <div className="panel-heading">
+          <h2>Add Tenant User</h2>
+          <p>Create the initial team that will manage recruiting, operations, and payouts.</p>
+        </div>
+        <form className="form-grid onboarding-form" onSubmit={submit}>
+          <label>
+            Email
+            <input value={form.email} onChange={(event) => setField('email', event.target.value)} />
+          </label>
+          <label>
+            Role
+            <select value={form.role} onChange={(event) => setField('role', event.target.value)}>
+              {tenantRoles.map((role) => (
+                <option key={role} value={role}>
+                  {role}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            First name
+            <input value={form.firstName} onChange={(event) => setField('firstName', event.target.value)} />
+          </label>
+          <label>
+            Last name
+            <input value={form.lastName} onChange={(event) => setField('lastName', event.target.value)} />
+          </label>
+          {error ? <p className="error full-width">{error}</p> : null}
+          <div className="form-actions full-width">
+            <button type="submit" className="primary" disabled={saving}>
+              <MailPlus size={16} />
+              {saving ? 'Saving' : 'Add user'}
+            </button>
+          </div>
+        </form>
+      </article>
+    </section>
+  );
+}
+
 function App() {
-  const [screen, setScreen] = React.useState<'overview' | 'onboarding'>('overview');
+  const [screen, setScreen] = React.useState<'overview' | 'onboarding' | 'users'>('overview');
   const [session, setSession] = React.useState<SessionPayload | null>(null);
   const [setup, setSetup] = React.useState<TenantSetup | null>(null);
+  const [users, setUsers] = React.useState<TenantUser[]>([]);
+  const [tenantRoles, setTenantRoles] = React.useState<string[]>([]);
 
   async function loadData() {
-    const [sessionResponse, onboardingResponse] = await Promise.all([
+    const [sessionResponse, onboardingResponse, usersResponse, rolesResponse] = await Promise.all([
       fetch('/api/session'),
-      fetch('/api/admin/onboarding')
+      fetch('/api/admin/onboarding'),
+      fetch('/api/admin/tenant-users'),
+      fetch('/api/tenant-roles')
     ]);
-    const [sessionPayload, onboardingPayload] = await Promise.all([
+    const [sessionPayload, onboardingPayload, usersPayload, rolesPayload] = await Promise.all([
       sessionResponse.json(),
-      onboardingResponse.json()
+      onboardingResponse.json(),
+      usersResponse.json(),
+      rolesResponse.json()
     ]);
     setSession(sessionPayload);
     setSetup(onboardingPayload.setup);
+    setUsers(usersPayload.users);
+    setTenantRoles(rolesPayload.roles);
   }
 
   React.useEffect(() => {
@@ -320,6 +455,10 @@ function App() {
           <Settings2 size={16} />
           Onboarding
         </button>
+        <button className={screen === 'users' ? 'active' : ''} onClick={() => setScreen('users')}>
+          <Users size={16} />
+          Users
+        </button>
       </nav>
 
       {screen === 'overview' ? (
@@ -365,6 +504,18 @@ function App() {
       ) : null}
 
       {screen === 'onboarding' ? <OnboardingPanel setup={setup} onSaved={setSetup} /> : null}
+      {screen === 'users' ? (
+        <UsersPanel
+          users={users}
+          tenantRoles={tenantRoles}
+          onUserAdded={(user) => {
+            setUsers((current) => {
+              const filtered = current.filter((entry) => entry.email !== user.email);
+              return [...filtered, user].sort((a, b) => a.lastName.localeCompare(b.lastName));
+            });
+          }}
+        />
+      ) : null}
     </main>
   );
 }

@@ -1,10 +1,11 @@
 import cors from 'cors';
 import express from 'express';
 import { allRoles } from '../../../packages/auth/src/model.js';
+import { tenantRoles } from '../../../packages/auth/src/model.js';
 import { attachTenantContext, requireRole } from './auth.js';
 import { config } from './config.js';
 import { demoTenant } from './demo-data.js';
-import { getTenantSetup, listTenantUsers, updateTenantSetup } from './state.js';
+import { addTenantUser, getTenantSetup, listTenantUsers, updateTenantSetup } from './state.js';
 
 type BootstrapTenant = {
   slug: string;
@@ -92,6 +93,10 @@ app.get('/api/roles', (_req, res) => {
   res.json({ roles: allRoles });
 });
 
+app.get('/api/tenant-roles', (_req, res) => {
+  res.json({ roles: tenantRoles });
+});
+
 app.get('/api/session', attachTenantContext, (req, res) => {
   res.json({
     tenant: req.tenantContext?.tenant,
@@ -118,6 +123,35 @@ app.get(
   requireRole(['tenant_owner', 'tenant_manager']),
   (_req, res) => {
     res.json({ users: listTenantUsers() });
+  }
+);
+
+app.post(
+  '/api/admin/tenant-users',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager']),
+  (req, res) => {
+    const body = req.body || {};
+    const email = String(body.email || '').trim().toLowerCase();
+    const firstName = String(body.firstName || '').trim();
+    const lastName = String(body.lastName || '').trim();
+    const role = String(body.role || '').trim();
+
+    if (!email || !firstName || !lastName || !tenantRoles.includes(role as (typeof tenantRoles)[number])) {
+      res.status(400).json({
+        error: 'Email, first name, last name, and a valid tenant role are required.'
+      });
+      return;
+    }
+
+    const user = addTenantUser({
+      email,
+      firstName,
+      lastName,
+      role: role as (typeof tenantRoles)[number]
+    });
+
+    res.status(201).json({ user });
   }
 );
 

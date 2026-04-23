@@ -214,6 +214,27 @@ select {
   margin: 0;
 }
 
+.user-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.user-row {
+  align-items: center;
+  background: #f7f5ef;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+}
+
+.user-row p {
+  color: #5e6a64;
+  margin: 4px 0 0;
+}
+
 .onboarding-form {
   margin-top: 16px;
 }
