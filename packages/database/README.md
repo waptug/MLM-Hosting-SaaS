@@ -32,6 +32,7 @@ Current starter migration:
 - [0004_tenant_admin_fields.sql](./0004_tenant_admin_fields.sql)
 - [0005_backfill_demo_tenant_admin.sql](./0005_backfill_demo_tenant_admin.sql)
 - [0006_audit_logs.sql](./0006_audit_logs.sql)
+- [0007_tenant_invitations.sql](./0007_tenant_invitations.sql)
 
 Core entity coverage now includes:
 
@@ -41,6 +42,7 @@ Core entity coverage now includes:
 - `products`
 - `orders`
 - `audit_logs`
+- `tenant_invitations`
 
 Current runtime note:
 

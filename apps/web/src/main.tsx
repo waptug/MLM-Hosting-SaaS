@@ -60,6 +60,18 @@ type TenantUser = {
   role: string;
 };
 
+type TenantInvitation = {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+  invitedByEmail: string;
+  status: 'pending' | 'accepted' | 'revoked';
+  expiresAt: string;
+  createdAt: string;
+};
+
 type SalesGroup = {
   id: string;
   name: string;
@@ -290,7 +302,7 @@ const manualSections: ManualSection[] = [
     summary: 'These notes matter for operating the current version correctly.',
     items: [
       'Tenant onboarding, tenant users, and the business domain are PostgreSQL-backed for the demo tenant.',
-      'Authentication, invitations, billing, and payout approvals are still pending production work.',
+      'Authentication, password setup, billing, and payout approvals are still pending production work.',
       'Audit logging now captures key admin create actions and setup updates.',
       'For the current local environment, the app expects DATABASE_URL to point at the Postgres container.'
     ]
@@ -550,6 +562,128 @@ function UsersPanel({
             <button type="submit" className="primary" disabled={saving}>
               <MailPlus size={16} />
               {saving ? 'Saving' : 'Add user'}
+            </button>
+          </div>
+        </form>
+      </article>
+    </section>
+  );
+}
+
+function InvitationsPanel({
+  invitations,
+  tenantRoles,
+  onInvitationAdded
+}: {
+  invitations: TenantInvitation[];
+  tenantRoles: string[];
+  onInvitationAdded: (invitation: TenantInvitation) => void;
+}) {
+  const [form, setForm] = React.useState({
+    email: '',
+    firstName: '',
+    lastName: '',
+    role: tenantRoles[0] || 'sales_rep'
+  });
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  React.useEffect(() => {
+    if (tenantRoles.length && !tenantRoles.includes(form.role)) {
+      setForm((current) => ({ ...current, role: tenantRoles[0] }));
+    }
+  }, [tenantRoles, form.role]);
+
+  function setField(field: 'email' | 'firstName' | 'lastName' | 'role', value: string) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+
+    const response = await fetch('/api/admin/invitations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form)
+    });
+    const payload = await response.json();
+    setSaving(false);
+
+    if (!response.ok) {
+      setError(payload.error || 'Unable to create invitation.');
+      return;
+    }
+
+    onInvitationAdded(payload.invitation);
+    setForm({
+      email: '',
+      firstName: '',
+      lastName: '',
+      role: tenantRoles[0] || 'sales_rep'
+    });
+  }
+
+  return (
+    <section className="content-grid">
+      <article className="panel">
+        <div className="panel-heading">
+          <h2>Pending Invitations</h2>
+          <p>Invite future tenant users before they have active accounts.</p>
+        </div>
+        <div className="user-list">
+          {invitations.map((invitation) => (
+            <div className="user-row" key={invitation.id}>
+              <div>
+                <strong>
+                  {invitation.firstName} {invitation.lastName}
+                </strong>
+                <p>
+                  {invitation.email} · {invitation.role} · invited by {invitation.invitedByEmail || 'system'}
+                </p>
+              </div>
+              <span className={`status-pill ${invitation.status === 'accepted' ? 'done' : invitation.status === 'revoked' ? 'active' : 'next'}`}>
+                {invitation.status}
+              </span>
+            </div>
+          ))}
+        </div>
+      </article>
+
+      <article className="panel">
+        <div className="panel-heading">
+          <h2>Create Invitation</h2>
+          <p>Issue a pending invitation with tenant role and expiry tracking.</p>
+        </div>
+        <form className="form-grid onboarding-form" onSubmit={submit}>
+          <label>
+            Email
+            <input value={form.email} onChange={(event) => setField('email', event.target.value)} />
+          </label>
+          <label>
+            Role
+            <select value={form.role} onChange={(event) => setField('role', event.target.value)}>
+              {tenantRoles.map((role) => (
+                <option key={role} value={role}>
+                  {role}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            First name
+            <input value={form.firstName} onChange={(event) => setField('firstName', event.target.value)} />
+          </label>
+          <label>
+            Last name
+            <input value={form.lastName} onChange={(event) => setField('lastName', event.target.value)} />
+          </label>
+          {error ? <p className="error full-width">{error}</p> : null}
+          <div className="form-actions full-width">
+            <button type="submit" className="primary" disabled={saving}>
+              <MailPlus size={16} />
+              {saving ? 'Saving' : 'Create invitation'}
             </button>
           </div>
         </form>
@@ -1320,10 +1454,11 @@ function AuditLogsPanel({ entries }: { entries: AuditLogEntry[] }) {
 }
 
 function App() {
-  const [screen, setScreen] = React.useState<'overview' | 'onboarding' | 'users' | 'sales-groups' | 'members' | 'customers' | 'orders' | 'commissions' | 'audit' | 'manual'>('overview');
+  const [screen, setScreen] = React.useState<'overview' | 'onboarding' | 'users' | 'invitations' | 'sales-groups' | 'members' | 'customers' | 'orders' | 'commissions' | 'audit' | 'manual'>('overview');
   const [session, setSession] = React.useState<SessionPayload | null>(null);
   const [setup, setSetup] = React.useState<TenantSetup | null>(null);
   const [users, setUsers] = React.useState<TenantUser[]>([]);
+  const [invitations, setInvitations] = React.useState<TenantInvitation[]>([]);
   const [tenantRoles, setTenantRoles] = React.useState<string[]>([]);
   const [salesGroups, setSalesGroups] = React.useState<SalesGroup[]>([]);
   const [members, setMembers] = React.useState<Member[]>([]);
@@ -1358,6 +1493,7 @@ function App() {
       sessionResponse,
       onboardingResponse,
       usersResponse,
+      invitationsResponse,
       rolesResponse,
       salesGroupsResponse,
       membersResponse,
@@ -1371,6 +1507,7 @@ function App() {
       fetch('/api/session'),
       fetch('/api/admin/onboarding'),
       fetch('/api/admin/tenant-users'),
+      fetch('/api/admin/invitations'),
       fetch('/api/tenant-roles'),
       fetch('/api/admin/sales-groups'),
       fetch('/api/admin/members'),
@@ -1385,6 +1522,7 @@ function App() {
       sessionPayload,
       onboardingPayload,
       usersPayload,
+      invitationsPayload,
       rolesPayload,
       salesGroupsPayload,
       membersPayload,
@@ -1398,6 +1536,7 @@ function App() {
       sessionResponse.json(),
       onboardingResponse.json(),
       usersResponse.json(),
+      invitationsResponse.json(),
       rolesResponse.json(),
       salesGroupsResponse.json(),
       membersResponse.json(),
@@ -1411,6 +1550,7 @@ function App() {
     setSession(sessionPayload);
     setSetup(onboardingPayload.setup);
     setUsers(usersPayload.users);
+    setInvitations(invitationsPayload.invitations);
     setTenantRoles(rolesPayload.roles);
     setSalesGroups(salesGroupsPayload.salesGroups);
     setMembers(membersPayload.members);
@@ -1477,6 +1617,10 @@ function App() {
         <button className={screen === 'users' ? 'active' : ''} onClick={() => setScreen('users')}>
           <Users size={16} />
           Users
+        </button>
+        <button className={screen === 'invitations' ? 'active' : ''} onClick={() => setScreen('invitations')}>
+          <MailPlus size={16} />
+          Invitations
         </button>
         <button className={screen === 'sales-groups' ? 'active' : ''} onClick={() => setScreen('sales-groups')}>
           <Network size={16} />
@@ -1568,6 +1712,16 @@ function App() {
               const filtered = current.filter((entry) => entry.email !== user.email);
               return [...filtered, user].sort((a, b) => a.lastName.localeCompare(b.lastName));
             });
+            reloadAuditLogs().catch(() => undefined);
+          }}
+        />
+      ) : null}
+      {screen === 'invitations' ? (
+        <InvitationsPanel
+          invitations={invitations}
+          tenantRoles={tenantRoles}
+          onInvitationAdded={(invitation) => {
+            setInvitations((current) => [invitation, ...current]);
             reloadAuditLogs().catch(() => undefined);
           }}
         />

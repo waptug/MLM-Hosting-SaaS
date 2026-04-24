@@ -105,6 +105,18 @@ export type AuditLogEntry = {
   createdAt: string;
 };
 
+export type TenantInvitation = {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: RoleKey;
+  invitedByEmail: string;
+  status: 'pending' | 'accepted' | 'revoked';
+  expiresAt: string;
+  createdAt: string;
+};
+
 type DatabasePool = {
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
@@ -382,4 +394,100 @@ export async function recordAuditLog(input: {
       JSON.stringify(input.details || {})
     ]
   );
+}
+
+export async function listTenantInvitations(limit = 50): Promise<TenantInvitation[]> {
+  const pool = await getPool();
+  const id = await tenantId(pool);
+  const result = await pool.query<TenantInvitation>(
+    `
+      SELECT
+        invite.id::text AS id,
+        invite.email,
+        invite.first_name AS "firstName",
+        invite.last_name AS "lastName",
+        invite.role_key AS role,
+        COALESCE(inviter.email, '') AS "invitedByEmail",
+        invite.status,
+        invite.expires_at::text AS "expiresAt",
+        invite.created_at::text AS "createdAt"
+      FROM tenant_invitations invite
+      LEFT JOIN users inviter ON inviter.id = invite.invited_by_user_id
+      WHERE invite.tenant_id = $1
+      ORDER BY invite.created_at DESC
+      LIMIT $2
+    `,
+    [id, limit]
+  );
+
+  return result.rows;
+}
+
+export async function createTenantInvitation(input: {
+  actorEmail?: string | null;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: RoleKey;
+}) {
+  const pool = await getPool();
+  const id = await tenantId(pool);
+  const normalizedEmail = input.email.trim().toLowerCase();
+  const actorEmail = (input.actorEmail || '').trim().toLowerCase();
+
+  const existingPending = await pool.query<{ id: string }>(
+    `
+      SELECT id::text AS id
+      FROM tenant_invitations
+      WHERE tenant_id = $1 AND email = $2 AND status = 'pending'
+      LIMIT 1
+    `,
+    [id, normalizedEmail]
+  );
+
+  if (existingPending.rows[0]?.id) {
+    throw new Error(`A pending invitation already exists for ${normalizedEmail}.`);
+  }
+
+  let invitedByUserId: string | null = null;
+  if (actorEmail) {
+    const inviterResult = await pool.query<{ id: string }>('SELECT id::text AS id FROM users WHERE email = $1', [actorEmail]);
+    invitedByUserId = inviterResult.rows[0]?.id || null;
+  }
+
+  const invitationId = randomUUID();
+  const invitationToken = randomUUID().replace(/-/g, '');
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString();
+
+  await pool.query(
+    `
+      INSERT INTO tenant_invitations (
+        id,
+        tenant_id,
+        invited_by_user_id,
+        email,
+        first_name,
+        last_name,
+        role_key,
+        invitation_token,
+        status,
+        expires_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9)
+    `,
+    [
+      invitationId,
+      id,
+      invitedByUserId,
+      normalizedEmail,
+      input.firstName.trim(),
+      input.lastName.trim(),
+      input.role,
+      invitationToken,
+      expiresAt
+    ]
+  );
+
+  const invitations = await listTenantInvitations();
+  return invitations.find((invitation) => invitation.id === invitationId)!;
 }

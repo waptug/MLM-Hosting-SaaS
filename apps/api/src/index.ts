@@ -8,8 +8,10 @@ import { config } from './config.js';
 import { businessRepository, businessRepositoryMode } from './repository-provider.js';
 import {
   addTenantUser,
+  createTenantInvitation,
   getTenantSetup,
   listAuditLogs,
+  listTenantInvitations,
   listTenantUsers,
   recordAuditLog,
   updateTenantSetup
@@ -180,6 +182,64 @@ app.get(
   requireRole(['tenant_owner', 'tenant_manager']),
   async (_req, res) => {
     res.json({ users: await listTenantUsers() });
+  }
+);
+
+app.get(
+  '/api/admin/invitations',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager']),
+  async (_req, res) => {
+    res.json({ invitations: await listTenantInvitations() });
+  }
+);
+
+app.post(
+  '/api/admin/invitations',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager']),
+  async (req, res) => {
+    const body = req.body || {};
+    const email = String(body.email || '').trim().toLowerCase();
+    const firstName = String(body.firstName || '').trim();
+    const lastName = String(body.lastName || '').trim();
+    const role = String(body.role || '').trim();
+
+    if (!email || !firstName || !lastName || !tenantRoles.includes(role as (typeof tenantRoles)[number])) {
+      res.status(400).json({
+        error: 'Email, first name, last name, and a valid tenant role are required.'
+      });
+      return;
+    }
+
+    try {
+      const invitation = await createTenantInvitation({
+        actorEmail: req.tenantContext?.user.email,
+        email,
+        firstName,
+        lastName,
+        role: role as (typeof tenantRoles)[number]
+      });
+
+      await recordAuditLog({
+        actorEmail: req.tenantContext?.user.email,
+        actionKey: 'tenant.invitation.created',
+        entityType: 'tenant_invitation',
+        entityId: invitation.id,
+        summary: `Created invitation for ${invitation.email} as ${invitation.role}.`,
+        details: {
+          email: invitation.email,
+          role: invitation.role,
+          expiresAt: invitation.expiresAt
+        }
+      });
+
+      res.status(201).json({ invitation });
+    } catch (error) {
+      res.status(400).json({
+        error: error instanceof Error ? error.message : 'Unable to create invitation.'
+      });
+    }
   }
 );
 

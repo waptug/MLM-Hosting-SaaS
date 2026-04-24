@@ -17,6 +17,7 @@ function assert(condition, message) {
 }
 
 let createdSalesGroupId = null;
+let createdInvitationId = null;
 const uniqueSuffix = randomUUID().slice(0, 8).toUpperCase();
 
 async function invoke(method, path, { headers = {}, body } = {}) {
@@ -119,6 +120,42 @@ try {
     'Audit log did not capture the created sales group.'
   );
 
+  const invitationsBefore = await invoke('GET', '/api/admin/invitations');
+  assert(invitationsBefore.status === 200, 'Invitation list request failed.');
+  const invitationBaselineCount = invitationsBefore.body?.invitations?.length ?? 0;
+
+  const createInvitation = await invoke('POST', '/api/admin/invitations', {
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: {
+      email: `invite-${uniqueSuffix.toLowerCase()}@example.com`,
+      firstName: 'Invite',
+      lastName: uniqueSuffix,
+      role: 'sales_rep'
+    }
+  });
+  assert(createInvitation.status === 201, 'Invitation create request failed.');
+  createdInvitationId = createInvitation.body?.invitation?.id ?? null;
+  assert(createdInvitationId, 'Created invitation did not return an id.');
+
+  const invitationsAfter = await invoke('GET', '/api/admin/invitations');
+  assert(invitationsAfter.status === 200, 'Invitation list after create failed.');
+  assert(
+    (invitationsAfter.body?.invitations?.length ?? 0) === invitationBaselineCount + 1,
+    'Invitation count did not increase after create.'
+  );
+
+  const auditLogsAfterInvite = await invoke('GET', '/api/admin/audit-logs');
+  assert(auditLogsAfterInvite.status === 200, 'Audit log list after invitation failed.');
+  assert(
+    Array.isArray(auditLogsAfterInvite.body?.entries) &&
+      auditLogsAfterInvite.body.entries.some(
+        (entry) => entry.actionKey === 'tenant.invitation.created' && entry.entityId === createdInvitationId
+      ),
+    'Audit log did not capture the created invitation.'
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -130,7 +167,8 @@ try {
           'finance tenant context',
           'tenant user role denial',
           'sales group create and list',
-          'audit log capture'
+          'audit log capture',
+          'invitation create and list'
         ]
       },
       null,
@@ -138,6 +176,10 @@ try {
     )
   );
 } finally {
+  if (createdInvitationId) {
+    await pool.query('DELETE FROM tenant_invitations WHERE id = $1', [createdInvitationId]);
+  }
+
   if (createdSalesGroupId) {
     await pool.query('DELETE FROM sales_groups WHERE id = $1', [createdSalesGroupId]);
   }
