@@ -1,15 +1,19 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import {
+  ArrowRight,
   BriefcaseBusiness,
   BadgeDollarSign,
   BookOpenText,
   Building2,
+  CheckCircle2,
+  Globe2,
   MailPlus,
   LayoutDashboard,
   ListTree,
   Network,
   Palette,
+  TrendingUp,
   ScrollText,
   Settings2,
   ShieldCheck,
@@ -24,6 +28,17 @@ type Milestone = {
   title: string;
   detail: string;
   status: StepStatus;
+};
+
+type LandingFeature = {
+  title: string;
+  detail: string;
+  icon: React.ComponentType<{ size?: number }>;
+};
+
+type LandingStat = {
+  value: string;
+  label: string;
 };
 
 type SessionPayload = {
@@ -320,6 +335,47 @@ const milestones: Milestone[] = [
   }
 ];
 
+const landingStats: LandingStat[] = [
+  { value: '1 workspace', label: 'per reseller tenant' },
+  { value: '1 system', label: 'for sales, customers, commissions, and payouts' },
+  { value: '0 spreadsheets', label: 'required for the core workflow' }
+];
+
+const landingFeatures: LandingFeature[] = [
+  {
+    title: 'Tenant-scoped reseller operations',
+    detail: 'Each reseller gets its own workspace, users, branding, and data isolation.',
+    icon: Globe2
+  },
+  {
+    title: 'Downline and customer tracking',
+    detail: 'Members, sponsors, customers, and orders stay linked so you can drill into any level.',
+    icon: Network
+  },
+  {
+    title: 'Commission and payout control',
+    detail: 'Track orders, calculate commissions, approve payout batches, and preserve the history behind each run.',
+    icon: BadgeDollarSign
+  },
+  {
+    title: 'White-label setup',
+    detail: 'Brand labels, domains, emails, and logos can be configured per tenant.',
+    icon: Settings2
+  }
+];
+
+const landingReasons = [
+  'Run a cleaner sales operation with fewer manual handoffs.',
+  'See who recruited whom, what they sold, and what they earned.',
+  'Keep payouts, billing, and customer ownership tied to the tenant workspace.'
+];
+
+const landingSteps = [
+  'Set up a reseller workspace, branding, and user roles.',
+  'Add sales groups, members, customers, and products.',
+  'Track orders, commissions, and payouts from one dashboard.'
+];
+
 const workstreams = [
   {
     icon: Building2,
@@ -536,6 +592,225 @@ const deepDiveSections: DeepDiveSection[] = [
 
 function StatusPill({ status }: { status: StepStatus }) {
   return <span className={`status-pill ${status}`}>{status === 'done' ? 'Done' : status === 'active' ? 'In Progress' : 'Queued'}</span>;
+}
+
+function LandingHeroArt() {
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
+
+  React.useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    const draw = () => {
+      const parent = canvas.parentElement;
+      if (!parent) return;
+      const width = Math.max(800, parent.clientWidth);
+      const height = Math.max(520, parent.clientHeight);
+      const scale = window.devicePixelRatio || 1;
+
+      canvas.width = Math.floor(width * scale);
+      canvas.height = Math.floor(height * scale);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      context.setTransform(scale, 0, 0, scale, 0, 0);
+
+      context.clearRect(0, 0, width, height);
+      context.fillStyle = '#0f1714';
+      context.fillRect(0, 0, width, height);
+
+      context.strokeStyle = 'rgba(255,255,255,0.05)';
+      context.lineWidth = 1;
+      for (let x = 0; x < width; x += 40) {
+        context.beginPath();
+        context.moveTo(x, 0);
+        context.lineTo(x, height);
+        context.stroke();
+      }
+      for (let y = 0; y < height; y += 40) {
+        context.beginPath();
+        context.moveTo(0, y);
+        context.lineTo(width, y);
+        context.stroke();
+      }
+
+      const drawRoundRect = (x: number, y: number, w: number, h: number, r: number, fill: string, stroke?: string) => {
+        context.beginPath();
+        context.moveTo(x + r, y);
+        context.arcTo(x + w, y, x + w, y + h, r);
+        context.arcTo(x + w, y + h, x, y + h, r);
+        context.arcTo(x, y + h, x, y, r);
+        context.arcTo(x, y, x + w, y, r);
+        context.closePath();
+        context.fillStyle = fill;
+        context.fill();
+        if (stroke) {
+          context.strokeStyle = stroke;
+          context.stroke();
+        }
+      };
+
+      drawRoundRect(width * 0.08, height * 0.62, width * 0.84, height * 0.2, 28, '#17221d', 'rgba(255,255,255,0.08)');
+      drawRoundRect(width * 0.14, height * 0.18, width * 0.56, height * 0.44, 22, '#111b17', 'rgba(166, 208, 188, 0.25)');
+      drawRoundRect(width * 0.16, height * 0.22, width * 0.5, height * 0.34, 16, '#f7f5ef', 'rgba(0,0,0,0.08)');
+      drawRoundRect(width * 0.18, height * 0.26, width * 0.12, height * 0.04, 999, '#c0d9cc');
+      drawRoundRect(width * 0.18, height * 0.32, width * 0.16, height * 0.1, 14, '#dfe8e2');
+      drawRoundRect(width * 0.36, height * 0.32, width * 0.14, height * 0.1, 14, '#dfe8e2');
+      drawRoundRect(width * 0.52, height * 0.32, width * 0.1, height * 0.1, 14, '#dfe8e2');
+      drawRoundRect(width * 0.18, height * 0.46, width * 0.42, height * 0.06, 14, '#d6e2db');
+
+      const panelXs = [width * 0.18, width * 0.31, width * 0.44];
+      const panelWidths = [width * 0.1, width * 0.1, width * 0.1];
+      panelXs.forEach((x, index) => {
+        drawRoundRect(x, height * 0.57, panelWidths[index], height * 0.08, 14, ['#1b4d3a', '#5f7d6e', '#a7c6b5'][index]);
+      });
+
+      drawRoundRect(width * 0.73, height * 0.2, width * 0.18, height * 0.26, 20, '#f7f5ef', 'rgba(0,0,0,0.08)');
+      drawRoundRect(width * 0.75, height * 0.24, width * 0.14, height * 0.04, 999, '#d2e2d7');
+      drawRoundRect(width * 0.75, height * 0.31, width * 0.12, height * 0.07, 14, '#dfe8e2');
+      drawRoundRect(width * 0.75, height * 0.41, width * 0.1, height * 0.02, 10, '#b7c8bf');
+      drawRoundRect(width * 0.76, height * 0.45, width * 0.08, height * 0.02, 10, '#c6d6ce');
+
+      drawRoundRect(width * 0.7, height * 0.5, width * 0.14, height * 0.24, 18, '#0f1b17', 'rgba(255,255,255,0.08)');
+      drawRoundRect(width * 0.715, height * 0.53, width * 0.11, height * 0.08, 12, '#dfe8e2');
+      drawRoundRect(width * 0.715, height * 0.64, width * 0.11, height * 0.025, 10, '#2b604a');
+      drawRoundRect(width * 0.715, height * 0.675, width * 0.085, height * 0.025, 10, '#93b8a5');
+
+      context.strokeStyle = 'rgba(195, 222, 209, 0.5)';
+      context.lineWidth = 2;
+      context.beginPath();
+      context.moveTo(width * 0.35, height * 0.61);
+      context.lineTo(width * 0.52, height * 0.61);
+      context.lineTo(width * 0.59, height * 0.5);
+      context.stroke();
+
+      context.fillStyle = 'rgba(166, 208, 188, 0.12)';
+      context.beginPath();
+      context.arc(width * 0.44, height * 0.44, 110, 0, Math.PI * 2);
+      context.fill();
+
+      context.fillStyle = 'rgba(137, 170, 156, 0.2)';
+      context.beginPath();
+      context.arc(width * 0.79, height * 0.34, 90, 0, Math.PI * 2);
+      context.fill();
+    };
+
+    draw();
+    const observer = new ResizeObserver(draw);
+    if (canvas.parentElement) {
+      observer.observe(canvas.parentElement);
+    }
+    window.addEventListener('resize', draw);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', draw);
+    };
+  }, []);
+
+  return <canvas ref={canvasRef} className="landing-hero-art" aria-hidden="true" />;
+}
+
+function PublicLandingPage({
+  demoCredentials,
+  onAuthenticated
+}: {
+  demoCredentials: DemoCredentials | null;
+  onAuthenticated: () => void;
+}) {
+  return (
+    <section className="public-page">
+      <header className="public-hero">
+        <LandingHeroArt />
+        <div className="public-hero-overlay">
+          <div className="public-hero-copy">
+            <p className="eyebrow">mtbn.net reseller platform</p>
+            <h1>Run hosting reseller sales, commissions, and payouts in one workspace.</h1>
+            <p className="lede">
+              Give every reseller a branded tenant, track their downline, connect customers to members, and keep commissions and payouts
+              tied to the actual sales record.
+            </p>
+            <div className="landing-actions">
+              <a className="primary landing-link" href="#demo-access">
+                View the live workspace
+                <ArrowRight size={16} />
+              </a>
+              <a className="landing-link" href="#why-it-matters">
+                Why mtbn.net resellers use it
+              </a>
+            </div>
+            <div className="landing-stats">
+              {landingStats.map((stat) => (
+                <div key={stat.label}>
+                  <strong>{stat.value}</strong>
+                  <span>{stat.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <section className="public-section" id="why-it-matters">
+        <div className="section-heading">
+          <h2>Why it matters</h2>
+          <p>
+            The platform replaces spreadsheets and manual payout math with a tenant-aware system built for reseller operations.
+          </p>
+        </div>
+        <div className="feature-grid">
+          {landingReasons.map((reason) => (
+            <article className="feature-card" key={reason}>
+              <CheckCircle2 size={18} />
+              <p>{reason}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="public-section">
+        <div className="section-heading">
+          <h2>What the site does</h2>
+          <p>
+            It gives mtbn.net resellers a single place to manage the full operating loop from recruiting to commission payouts.
+          </p>
+        </div>
+        <div className="feature-grid feature-grid-4">
+          {landingFeatures.map(({ title, detail, icon: Icon }) => (
+            <article className="feature-card feature-card-strong" key={title}>
+              <Icon size={20} />
+              <strong>{title}</strong>
+              <p>{detail}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="public-section">
+        <div className="section-heading">
+          <h2>How it works</h2>
+          <p>The workflow is simple enough for operators, but structured enough for payouts and reporting.</p>
+        </div>
+        <div className="step-grid">
+          {landingSteps.map((step, index) => (
+            <article className="step-card" key={step}>
+              <span>{index + 1}</span>
+              <p>{step}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="public-section public-section-wide" id="demo-access">
+        <div className="section-heading">
+          <h2>Local demo access</h2>
+          <p>Preview the current workspace while the production product is being built.</p>
+        </div>
+        <AuthPanel demoCredentials={demoCredentials} onAuthenticated={onAuthenticated} />
+      </section>
+    </section>
+  );
 }
 
 function OnboardingPanel({ setup, onSaved }: { setup: TenantSetup | null; onSaved: (setup: TenantSetup) => void }) {
@@ -2986,61 +3261,63 @@ function App() {
 
   return (
     <main className="app-shell">
-      <header className="hero">
-        <div className="hero-copy">
-          <p className="eyebrow">Phase 1 foundation</p>
-          <h1>MLM Hosting SaaS</h1>
-          <p className="lede">
-            Multi-tenant sales, customer, commission, and payout infrastructure for `mtbn.net` hosting resellers.
-          </p>
-        </div>
-        <section className="hero-panel" aria-label="Current milestone">
-          <h2>Current Focus</h2>
-          <strong>Production launch validation</strong>
-          <p>Keep the tenant, finance, and access workflows aligned while the release checklist stays complete.</p>
-        </section>
-      </header>
-
-      <section className="grid stats-grid">
-        <article className="stat-card">
-          <span>Target tenancy</span>
-          <strong>Multi-tenant</strong>
-        </article>
-        <article className="stat-card">
-          <span>Data layer</span>
-          <strong>PostgreSQL</strong>
-        </article>
-        <article className="stat-card">
-          <span>Current status</span>
-          <strong>{setup?.status || 'signed out'}</strong>
-        </article>
-        <article className="stat-card">
-          <span>Theme preset</span>
-          <strong>{setup?.themePreset || 'forest'}</strong>
-        </article>
-      </section>
-
       {session ? (
-        <section className="panel auth-status-panel">
-          <div className="panel-heading">
-            <h2>Authenticated Session</h2>
-            <p>
-              {session.user.firstName} {session.user.lastName} · {session.role} · {session.tenant.slug}
-            </p>
-          </div>
-          <div className="form-actions">
-            <button type="button" onClick={() => logout()}>
-              <ShieldCheck size={16} />
-              Sign out
-            </button>
-          </div>
-        </section>
+        <>
+          <header className="hero">
+            <div className="hero-copy">
+              <p className="eyebrow">Phase 1 foundation</p>
+              <h1>MLM Hosting SaaS</h1>
+              <p className="lede">
+                Multi-tenant sales, customer, commission, and payout infrastructure for `mtbn.net` hosting resellers.
+              </p>
+            </div>
+            <section className="hero-panel" aria-label="Current milestone">
+              <h2>Current Focus</h2>
+              <strong>Production launch validation</strong>
+              <p>Keep the tenant, finance, and access workflows aligned while the release checklist stays complete.</p>
+            </section>
+          </header>
+
+          <section className="grid stats-grid">
+            <article className="stat-card">
+              <span>Target tenancy</span>
+              <strong>Multi-tenant</strong>
+            </article>
+            <article className="stat-card">
+              <span>Data layer</span>
+              <strong>PostgreSQL</strong>
+            </article>
+            <article className="stat-card">
+              <span>Current status</span>
+              <strong>{setup?.status || 'signed out'}</strong>
+            </article>
+            <article className="stat-card">
+              <span>Theme preset</span>
+              <strong>{setup?.themePreset || 'forest'}</strong>
+            </article>
+          </section>
+
+          <section className="panel auth-status-panel">
+            <div className="panel-heading">
+              <h2>Authenticated Session</h2>
+              <p>
+                {session.user.firstName} {session.user.lastName} · {session.role} · {session.tenant.slug}
+              </p>
+            </div>
+            <div className="form-actions">
+              <button type="button" onClick={() => logout()}>
+                <ShieldCheck size={16} />
+                Sign out
+              </button>
+            </div>
+          </section>
+        </>
       ) : (
-        <AuthPanel demoCredentials={demoCredentials} onAuthenticated={() => loadData().catch(() => undefined)} />
+        <PublicLandingPage demoCredentials={demoCredentials} onAuthenticated={() => loadData().catch(() => undefined)} />
       )}
 
       {session ? (
-      <nav className="subtabs" aria-label="Admin sections">
+        <nav className="subtabs" aria-label="Admin sections">
         <button className={screen === 'overview' ? 'active' : ''} onClick={() => setScreen('overview')}>
           <LayoutDashboard size={16} />
           Overview
@@ -3093,7 +3370,7 @@ function App() {
           <BookOpenText size={16} />
           Manual
         </button>
-      </nav>
+        </nav>
       ) : null}
 
       {session && screen === 'overview' ? (
