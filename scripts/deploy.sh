@@ -118,7 +118,7 @@ fi
 echo "Pushing to GitHub..."
 git push origin "$DEPLOY_GIT_BRANCH"
 
-remote_command="mkdir -p '$DEPLOY_REMOTE_DIR' '$DEPLOY_PUBLIC_DIR' && tar -xzpf - -C '$DEPLOY_REMOTE_DIR' && cd '$DEPLOY_REMOTE_DIR' && "
+remote_command="mkdir -p '$DEPLOY_REMOTE_DIR' '$DEPLOY_PUBLIC_DIR' && cd '$DEPLOY_REMOTE_DIR' && "
 publish_command="rm -rf '$DEPLOY_PUBLIC_DIR'/* && cp -a '$DEPLOY_REMOTE_DIR/apps/web/dist/.' '$DEPLOY_PUBLIC_DIR/'"
 
 if [[ -n "$DEPLOY_REMOTE_POST_SYNC" ]]; then
