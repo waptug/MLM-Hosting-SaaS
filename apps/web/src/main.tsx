@@ -280,6 +280,12 @@ type TodoGroup = {
   items: string[];
 };
 
+type DeepDiveSection = {
+  title: string;
+  summary: string;
+  bullets: string[];
+};
+
 const milestones: Milestone[] = [
   {
     title: 'Tenant foundation',
@@ -522,6 +528,79 @@ const productionLaunchOrder = [
   'Payout line items and stronger payout workflow',
   'Deployment, monitoring, and CI/CD',
   'Browser test coverage'
+];
+
+const deepDiveSections: DeepDiveSection[] = [
+  {
+    title: 'Runtime Layout',
+    summary: 'The app is a monorepo with a React/Vite frontend, an Express API, and a dedicated database package.',
+    bullets: [
+      'apps/web is the browser client and owns the tabbed admin UI.',
+      'apps/api exposes the HTTP routes and request authorization.',
+      'packages/database owns migrations, the pool, and migration execution.',
+      'packages/auth owns the shared role model and tenant context types.'
+    ]
+  },
+  {
+    title: 'Request Flow',
+    summary: 'Every admin screen loads data from /api routes that read the current tenant from the session or headers.',
+    bullets: [
+      'The browser calls /api/session first to resolve tenant and user identity.',
+      'attachTenantContext resolves the active tenant before protected routes run.',
+      'requireRole gates access to admin and finance workflows.',
+      'The web app reloads summary data after writes so the UI stays aligned with the database.'
+    ]
+  },
+  {
+    title: 'Data Model Strategy',
+    summary: 'The domain is modeled in tenant-scoped tables so every reseller workspace stays isolated.',
+    bullets: [
+      'tenant_id is present on the operational tables and anchors every query.',
+      'sales groups, members, customers, products, and orders form the core business graph.',
+      'commission_plan_versions, commission_rules, payout_items, and commission_snapshots keep compensation history stable.',
+      'tenant_subscriptions and billing_invoices capture SaaS billing state for the workspace itself.'
+    ]
+  },
+  {
+    title: 'Commission Engine',
+    summary: 'Commissions are calculated from active orders and the seeded plan/rule set, then frozen into payout artifacts.',
+    bullets: [
+      'Direct commission uses each product commissionable_rate applied to active order revenue.',
+      'Override commission uses the current level-1 rule in the active commission plan.',
+      'Payout batches summarize the payable period, while payout_items hold the per-payee breakdown.',
+      'commission_snapshots store the historical math so prior payouts do not change when rules change.'
+    ]
+  },
+  {
+    title: 'Auth and Identity',
+    summary: 'Auth is session-cookie based, with invitation acceptance and password reset flows backed by PostgreSQL.',
+    bullets: [
+      'Passwords are hashed with scrypt and stored in users.password_hash.',
+      'auth_sessions stores a hashed session token plus expiry and last-seen metadata.',
+      'tenant_invitations and password_reset_tokens capture one-time onboarding actions.',
+      'The demo login box is only for local development and seeded tenant access.'
+    ]
+  },
+  {
+    title: 'Migrations and Seeds',
+    summary: 'The database is built incrementally with numbered SQL migrations and deterministic demo seed files.',
+    bullets: [
+      'Migrations are applied in numeric order by the database package runner.',
+      'Seed files use fixed UUIDs so the integration tests can reference stable records.',
+      'The local Postgres instance is expected to match the seeded demo tenant shape.',
+      'When you add new tables, keep the seed and the integration suite in sync.'
+    ]
+  },
+  {
+    title: 'Validation Model',
+    summary: 'The project uses typecheck, build, and API integration tests as the main safety net.',
+    bullets: [
+      'npm run typecheck validates the TypeScript surface across workspaces.',
+      'npm run build compiles the packages and web bundle.',
+      'npm run test:api rebuilds the database and API, then exercises the main tenant flows.',
+      'The integration suite resets the demo records it mutates so repeated runs stay stable.'
+    ]
+  }
 ];
 
 function StatusPill({ status }: { status: StepStatus }) {
@@ -2111,7 +2190,7 @@ function BillingPanel({
 }
 
 function ManualPanel() {
-  const [manualView, setManualView] = React.useState<'guide' | 'production'>('guide');
+  const [manualView, setManualView] = React.useState<'guide' | 'production' | 'developer'>('guide');
 
   return (
     <section className="panel manual-panel">
@@ -2125,6 +2204,9 @@ function ManualPanel() {
         </button>
         <button className={manualView === 'production' ? 'active' : ''} onClick={() => setManualView('production')}>
           Production To-Do
+        </button>
+        <button className={manualView === 'developer' ? 'active' : ''} onClick={() => setManualView('developer')}>
+          Developer Deep Dive
         </button>
       </nav>
       {manualView === 'guide' ? (
@@ -2141,7 +2223,7 @@ function ManualPanel() {
             </article>
           ))}
         </div>
-      ) : (
+      ) : manualView === 'production' ? (
         <div className="manual-grid">
           <article className="manual-section manual-section-wide">
             <h3>What Is Left To Complete For Production Site</h3>
@@ -2168,6 +2250,20 @@ function ManualPanel() {
               ))}
             </ol>
           </article>
+        </div>
+      ) : (
+        <div className="manual-grid">
+          {deepDiveSections.map((section) => (
+            <article className="manual-section" key={section.title}>
+              <h3>{section.title}</h3>
+              <p>{section.summary}</p>
+              <ul className="manual-list">
+                {section.bullets.map((bullet) => (
+                  <li key={bullet}>{bullet}</li>
+                ))}
+              </ul>
+            </article>
+          ))}
         </div>
       )}
     </section>
