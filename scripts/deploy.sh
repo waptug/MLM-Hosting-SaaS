@@ -37,10 +37,10 @@ release_dir="$ROOT_DIR/.deploy/release-$timestamp"
 remote_target="${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}"
 
 if [[ -z "$DEPLOY_REMOTE_DB_URL" && -n "$DEPLOY_REMOTE_DB_PASSWORD" ]]; then
-  encoded_password="$(python3 - <<'PY'
+  encoded_password="$(python3 - "$DEPLOY_REMOTE_DB_PASSWORD" <<'PY'
 from urllib.parse import quote
-import os
-print(quote(os.environ["DEPLOY_REMOTE_DB_PASSWORD"], safe=""))
+import sys
+print(quote(sys.argv[1], safe=""))
 PY
 )"
   DEPLOY_REMOTE_DB_URL="postgresql://${DEPLOY_REMOTE_DB_USER}:${encoded_password}@${DEPLOY_REMOTE_DB_HOST}:${DEPLOY_REMOTE_DB_PORT}/${DEPLOY_REMOTE_DB_NAME}"
