@@ -21,14 +21,6 @@ type BootstrapTenant = {
   ownerEmail: string;
 };
 
-const bootstrapTenant: BootstrapTenant = {
-  slug: demoTenant.slug,
-  name: demoTenant.name,
-  themePreset: demoTenant.themePreset,
-  status: demoTenant.status,
-  ownerEmail: getTenantSetup().ownerEmail
-};
-
 const app = express();
 
 app.use(
@@ -48,8 +40,15 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-app.get('/api/bootstrap', (_req, res) => {
-  const setup = getTenantSetup();
+app.get('/api/bootstrap', async (_req, res) => {
+  const setup = await getTenantSetup();
+  const bootstrapTenant: BootstrapTenant = {
+    slug: setup.slug,
+    name: setup.name,
+    themePreset: setup.themePreset,
+    status: setup.status,
+    ownerEmail: setup.ownerEmail
+  };
   res.json({
     tenant: { ...bootstrapTenant, ...setup },
     capabilities: {
@@ -72,8 +71,8 @@ app.get(
   '/api/admin/onboarding',
   attachTenantContext,
   requireRole(['tenant_owner', 'tenant_manager']),
-  (_req, res) => {
-    res.json({ setup: getTenantSetup() });
+  async (_req, res) => {
+    res.json({ setup: await getTenantSetup() });
   }
 );
 
@@ -81,20 +80,21 @@ app.put(
   '/api/admin/onboarding',
   attachTenantContext,
   requireRole(['tenant_owner']),
-  (req, res) => {
+  async (req, res) => {
     const payload = req.body || {};
+    const currentSetup = await getTenantSetup();
     const nextSetup = updateTenantSetup({
-      slug: String(payload.slug || '').trim() || getTenantSetup().slug,
-      name: String(payload.name || '').trim() || getTenantSetup().name,
-      themePreset: String(payload.themePreset || '').trim() || getTenantSetup().themePreset,
+      slug: String(payload.slug || '').trim() || currentSetup.slug,
+      name: String(payload.name || '').trim() || currentSetup.name,
+      themePreset: String(payload.themePreset || '').trim() || currentSetup.themePreset,
       status: payload.status === 'active' ? 'active' : 'draft',
-      ownerEmail: String(payload.ownerEmail || '').trim() || getTenantSetup().ownerEmail,
-      supportEmail: String(payload.supportEmail || '').trim() || getTenantSetup().supportEmail,
-      brandLabel: String(payload.brandLabel || '').trim() || getTenantSetup().brandLabel,
-      primaryDomain: String(payload.primaryDomain || '').trim() || getTenantSetup().primaryDomain
+      ownerEmail: String(payload.ownerEmail || '').trim() || currentSetup.ownerEmail,
+      supportEmail: String(payload.supportEmail || '').trim() || currentSetup.supportEmail,
+      brandLabel: String(payload.brandLabel || '').trim() || currentSetup.brandLabel,
+      primaryDomain: String(payload.primaryDomain || '').trim() || currentSetup.primaryDomain
     });
 
-    res.json({ setup: nextSetup });
+    res.json({ setup: await nextSetup });
   }
 );
 
@@ -130,8 +130,8 @@ app.get(
   '/api/admin/tenant-users',
   attachTenantContext,
   requireRole(['tenant_owner', 'tenant_manager']),
-  (_req, res) => {
-    res.json({ users: listTenantUsers() });
+  async (_req, res) => {
+    res.json({ users: await listTenantUsers() });
   }
 );
 
@@ -139,7 +139,7 @@ app.post(
   '/api/admin/tenant-users',
   attachTenantContext,
   requireRole(['tenant_owner', 'tenant_manager']),
-  (req, res) => {
+  async (req, res) => {
     const body = req.body || {};
     const email = String(body.email || '').trim().toLowerCase();
     const firstName = String(body.firstName || '').trim();
@@ -153,7 +153,7 @@ app.post(
       return;
     }
 
-    const user = addTenantUser({
+    const user = await addTenantUser({
       email,
       firstName,
       lastName,

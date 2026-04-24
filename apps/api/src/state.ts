@@ -1,6 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import type { RoleKey } from '../../../packages/auth/src/model.js';
 import type { AuthenticatedUser } from '../../../packages/auth/src/model.js';
-import { demoMemberships, demoTenant, demoUsers } from './demo-data.js';
+import { demoTenant } from './demo-data.js';
 
 export type TenantSetup = {
   slug: string;
@@ -94,74 +95,208 @@ export type PayoutBatch = {
   totalAmount: number;
 };
 
-const tenantSetup: TenantSetup = {
-  slug: demoTenant.slug,
-  name: demoTenant.name,
-  themePreset: demoTenant.themePreset,
-  status: demoTenant.status,
-  ownerEmail: 'owner@example.com',
-  supportEmail: 'support@demo-hosting-group.example',
-  brandLabel: 'Demo Hosting Group',
-  primaryDomain: 'demo-hosting-group.example'
+type DatabasePool = {
+  query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
 
-export function getTenantSetup() {
-  return tenantSetup;
+async function getPool(): Promise<DatabasePool> {
+  const { pool } = await import('@mlm-hosting-saas/database');
+  return pool;
 }
 
-export function updateTenantSetup(input: Partial<TenantSetup>) {
-  Object.assign(tenantSetup, input);
-  demoTenant.slug = tenantSetup.slug;
-  demoTenant.name = tenantSetup.name;
-  demoTenant.themePreset = tenantSetup.themePreset;
-  demoTenant.status = tenantSetup.status;
-  return tenantSetup;
+async function tenantId(pool: DatabasePool) {
+  const result = await pool.query<{ id: string }>('SELECT id::text AS id FROM tenants WHERE slug = $1', [
+    demoTenant.slug
+  ]);
+  const id = result.rows[0]?.id;
+
+  if (!id) {
+    throw new Error(`Tenant ${demoTenant.slug} is not present in PostgreSQL.`);
+  }
+
+  return id;
 }
 
-export function listTenantUsers(): Array<AuthenticatedUser & { role: RoleKey }> {
-  return demoMemberships
-    .filter((membership) => membership.tenantSlug === demoTenant.slug)
-    .map((membership) => {
-      const user = demoUsers.find((entry) => entry.email === membership.userEmail);
-      return {
-        ...(user as AuthenticatedUser),
-        role: membership.role
-      };
-    });
+export async function getTenantSetup() {
+  const pool = await getPool();
+  const result = await pool.query<{
+    slug: string;
+    name: string;
+    themePreset: string;
+    status: 'draft' | 'active';
+    ownerEmail: string | null;
+    supportEmail: string;
+    brandLabel: string;
+    primaryDomain: string;
+  }>(
+    `
+      SELECT
+        t.slug,
+        t.name,
+        t.theme_preset AS "themePreset",
+        t.status,
+        owner.email AS "ownerEmail",
+        t.support_email AS "supportEmail",
+        t.brand_label AS "brandLabel",
+        t.primary_domain AS "primaryDomain"
+      FROM tenants t
+      LEFT JOIN users owner ON owner.id = t.owner_user_id
+      WHERE t.slug = $1
+    `,
+    [demoTenant.slug]
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    throw new Error(`Tenant setup for ${demoTenant.slug} was not found.`);
+  }
+
+  return {
+    slug: row.slug,
+    name: row.name,
+    themePreset: row.themePreset,
+    status: row.status,
+    ownerEmail: row.ownerEmail || '',
+    supportEmail: row.supportEmail,
+    brandLabel: row.brandLabel,
+    primaryDomain: row.primaryDomain
+  } satisfies TenantSetup;
 }
 
-export function addTenantUser(input: {
+export async function updateTenantSetup(input: Partial<TenantSetup>) {
+  const pool = await getPool();
+  const id = await tenantId(pool);
+  const current = await getTenantSetup();
+
+  const nextSetup: TenantSetup = {
+    slug: input.slug || current.slug,
+    name: input.name || current.name,
+    themePreset: input.themePreset || current.themePreset,
+    status: input.status || current.status,
+    ownerEmail: input.ownerEmail || current.ownerEmail,
+    supportEmail: input.supportEmail || current.supportEmail,
+    brandLabel: input.brandLabel || current.brandLabel,
+    primaryDomain: input.primaryDomain || current.primaryDomain
+  };
+
+  let ownerUserId: string | null = null;
+  if (nextSetup.ownerEmail) {
+    const ownerResult = await pool.query<{ id: string }>('SELECT id::text AS id FROM users WHERE email = $1', [
+      nextSetup.ownerEmail
+    ]);
+    ownerUserId = ownerResult.rows[0]?.id || null;
+  }
+
+  await pool.query(
+    `
+      UPDATE tenants
+      SET
+        slug = $2,
+        name = $3,
+        theme_preset = $4,
+        status = $5,
+        owner_user_id = $6,
+        support_email = $7,
+        brand_label = $8,
+        primary_domain = $9,
+        updated_at = NOW()
+      WHERE id = $1
+    `,
+    [
+      id,
+      nextSetup.slug,
+      nextSetup.name,
+      nextSetup.themePreset,
+      nextSetup.status,
+      ownerUserId,
+      nextSetup.supportEmail,
+      nextSetup.brandLabel,
+      nextSetup.primaryDomain
+    ]
+  );
+
+  demoTenant.slug = nextSetup.slug;
+  demoTenant.name = nextSetup.name;
+  demoTenant.themePreset = nextSetup.themePreset;
+  demoTenant.status = nextSetup.status;
+
+  return getTenantSetup();
+}
+
+export async function listTenantUsers(): Promise<Array<AuthenticatedUser & { role: RoleKey }>> {
+  const pool = await getPool();
+  const result = await pool.query<AuthenticatedUser & { role: RoleKey }>(
+    `
+      SELECT
+        u.id::text AS id,
+        u.email,
+        u.first_name AS "firstName",
+        u.last_name AS "lastName",
+        tu.role_key AS role
+      FROM tenant_users tu
+      JOIN tenants t ON t.id = tu.tenant_id
+      JOIN users u ON u.id = tu.user_id
+      WHERE t.slug = $1
+      ORDER BY u.last_name, u.first_name, tu.role_key
+    `,
+    [demoTenant.slug]
+  );
+
+  return result.rows;
+}
+
+export async function addTenantUser(input: {
   email: string;
   firstName: string;
   lastName: string;
   role: RoleKey;
 }) {
+  const pool = await getPool();
+  const id = await tenantId(pool);
   const normalizedEmail = input.email.trim().toLowerCase();
-  const existingUser = demoUsers.find((user) => user.email === normalizedEmail);
+  let userId: string | null = null;
 
-  if (!existingUser) {
-    demoUsers.push({
-      id: `user_${demoUsers.length + 1}`,
-      email: normalizedEmail,
-      firstName: input.firstName.trim(),
-      lastName: input.lastName.trim()
-    });
+  const existingUserResult = await pool.query<{ id: string }>('SELECT id::text AS id FROM users WHERE email = $1', [
+    normalizedEmail
+  ]);
+  userId = existingUserResult.rows[0]?.id || null;
+
+  if (userId) {
+    await pool.query(
+      `
+        UPDATE users
+        SET
+          first_name = $2,
+          last_name = $3,
+          updated_at = NOW()
+        WHERE id = $1
+      `,
+      [userId, input.firstName.trim(), input.lastName.trim()]
+    );
+  } else {
+    userId = (await pool.query<{ id: string }>(
+      `
+        INSERT INTO users (id, email, password_hash, first_name, last_name)
+        VALUES ($1, $2, 'pending-password', $3, $4)
+        RETURNING id::text AS id
+      `,
+      [randomUUID(), normalizedEmail, input.firstName.trim(), input.lastName.trim()]
+    )).rows[0]?.id || null;
   }
 
-  const existingMembership = demoMemberships.find(
-    (membership) =>
-      membership.tenantSlug === demoTenant.slug && membership.userEmail === normalizedEmail
+  if (!userId) {
+    throw new Error(`Unable to create or update user ${normalizedEmail}.`);
+  }
+
+  await pool.query('DELETE FROM tenant_users WHERE tenant_id = $1 AND user_id = $2', [id, userId]);
+  await pool.query(
+    `
+      INSERT INTO tenant_users (id, tenant_id, user_id, role_key)
+      VALUES ($1, $2, $3, $4)
+    `,
+    [randomUUID(), id, userId, input.role]
   );
 
-  if (existingMembership) {
-    existingMembership.role = input.role;
-  } else {
-    demoMemberships.push({
-      tenantSlug: demoTenant.slug,
-      userEmail: normalizedEmail,
-      role: input.role
-    });
-  }
-
-  return listTenantUsers().find((user) => user.email === normalizedEmail)!;
+  const users = await listTenantUsers();
+  return users.find((user) => user.email === normalizedEmail)!;
 }

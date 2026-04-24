@@ -37,7 +37,7 @@ infra/
 - order entry tied to members and customers
 - derived commission summaries and payout batches
 
-The current implementation is a working SaaS foundation and demo workflow running on PostgreSQL for the business domain. It is not yet a production-complete platform.
+The current implementation is a working SaaS foundation and demo workflow running on PostgreSQL for the business domain, tenant setup, and tenant user management. It is not yet a production-complete platform.
 
 ## Commands
 
@@ -78,6 +78,7 @@ DATABASE_URL=postgresql://mlm:mlm_dev_password@127.0.0.1:5433/mlm_hosting_saas n
 - `GET /api/admin/commissions`
 - the same order and commission reads through the Vite proxy
 - local Postgres-backed write validation through `POST /api/admin/sales-groups`
+- Postgres-backed onboarding and tenant-user reads through both direct API and Vite proxy
 
 ## Next Production-Critical Work
 
