@@ -20,6 +20,8 @@ import {
   addTenantUser,
   createTenantInvitation,
   getTenantSetup,
+  listCommissionPlans,
+  listCommissionRules,
   listAuditLogs,
   listEmailDeliveryLogs,
   listTenantInvitations,
@@ -794,6 +796,18 @@ app.get(
   requireRole(['tenant_owner', 'tenant_manager', 'finance_manager']),
   async (_req, res) => {
     res.json({ summaries: await businessRepository.listCommissionSummary() });
+  }
+);
+
+app.get(
+  '/api/admin/commission-plans',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager', 'finance_manager']),
+  async (_req, res) => {
+    res.json({
+      plans: await listCommissionPlans(),
+      rules: await listCommissionRules()
+    });
   }
 );
 

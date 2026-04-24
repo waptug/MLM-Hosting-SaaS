@@ -165,6 +165,28 @@ type CommissionSummary = {
   totalCommission: number;
 };
 
+type CommissionPlanVersion = {
+  id: string;
+  planName: string;
+  versionNumber: number;
+  status: 'active' | 'draft' | 'retired';
+  effectiveFrom: string;
+  notes: string;
+};
+
+type CommissionRule = {
+  id: string;
+  planVersionId: string;
+  ruleKey: string;
+  ruleLabel: string;
+  ruleType: 'direct' | 'override' | 'workflow' | 'qualification';
+  levelNumber: number;
+  percentRate: number;
+  fixedAmount: number;
+  rankFloor: string;
+  notes: string;
+};
+
 type PayoutBatch = {
   id: string;
   periodLabel: string;
@@ -1509,10 +1531,14 @@ function OrdersPanel({
 function CommissionsPanel({
   summaries,
   payouts,
+  plans,
+  rules,
   onBatchUpdated
 }: {
   summaries: CommissionSummary[];
   payouts: PayoutBatch[];
+  plans: CommissionPlanVersion[];
+  rules: CommissionRule[];
   onBatchUpdated: (batch: PayoutBatch) => void;
 }) {
   const totals = summaries.reduce(
@@ -1575,7 +1601,7 @@ function CommissionsPanel({
         <article className="panel">
           <div className="panel-heading">
             <h2>Commission Summary</h2>
-            <p>Direct commissions come from the sold product rate. Sponsor overrides are calculated at 5% of active downline orders.</p>
+            <p>Direct commissions come from the sold product rate. Sponsor overrides come from the active commission plan rules.</p>
           </div>
           <div className="user-list">
             {summaries.map((summary) => (
@@ -1640,6 +1666,52 @@ function CommissionsPanel({
                     </button>
                   ) : null}
                 </div>
+              </div>
+            ))}
+          </div>
+        </article>
+      </section>
+
+      <section className="content-grid">
+        <article className="panel">
+          <div className="panel-heading">
+            <h2>Commission Plans</h2>
+            <p>Versioned plan headers for the tenant compensation engine.</p>
+          </div>
+          <div className="user-list">
+            {plans.map((plan) => (
+              <div className="user-row" key={plan.id}>
+                <div>
+                  <strong>
+                    {plan.planName} v{plan.versionNumber}
+                  </strong>
+                  <p>
+                    effective {plan.effectiveFrom} · {plan.notes || 'no notes'}
+                  </p>
+                </div>
+                <span className={`status-pill ${plan.status === 'active' ? 'done' : plan.status === 'draft' ? 'next' : 'active'}`}>
+                  {plan.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="panel">
+          <div className="panel-heading">
+            <h2>Commission Rules</h2>
+            <p>Persisted rule rows used by the summary and payout logic.</p>
+          </div>
+          <div className="user-list">
+            {rules.map((rule) => (
+              <div className="user-row" key={rule.id}>
+                <div>
+                  <strong>{rule.ruleLabel}</strong>
+                  <p>
+                    {rule.ruleType} · level {rule.levelNumber} · {(rule.percentRate * 100).toFixed(2)}%
+                  </p>
+                </div>
+                <span className="status-pill next">{rule.ruleKey}</span>
               </div>
             ))}
           </div>
@@ -2051,6 +2123,8 @@ function App() {
   const [orders, setOrders] = React.useState<Order[]>([]);
   const [commissionSummaries, setCommissionSummaries] = React.useState<CommissionSummary[]>([]);
   const [payoutBatches, setPayoutBatches] = React.useState<PayoutBatch[]>([]);
+  const [commissionPlans, setCommissionPlans] = React.useState<CommissionPlanVersion[]>([]);
+  const [commissionRules, setCommissionRules] = React.useState<CommissionRule[]>([]);
   const [auditLogs, setAuditLogs] = React.useState<AuditLogEntry[]>([]);
 
   async function fetchSessionOnly() {
@@ -2104,6 +2178,8 @@ function App() {
       setOrders([]);
       setCommissionSummaries([]);
       setPayoutBatches([]);
+      setCommissionPlans([]);
+      setCommissionRules([]);
       setAuditLogs([]);
       setDeliveryLogs([]);
       return;
@@ -2121,6 +2197,7 @@ function App() {
       ordersResponse,
       commissionsResponse,
       payoutsResponse,
+      plansResponse,
       auditLogsResponse,
       deliveryLogsResponse
     ] = await Promise.all([
@@ -2135,6 +2212,7 @@ function App() {
       fetch('/api/admin/orders'),
       fetch('/api/admin/commissions'),
       fetch('/api/admin/payouts'),
+      fetch('/api/admin/commission-plans'),
       fetch('/api/admin/audit-logs'),
       fetch('/api/admin/email-delivery-logs')
     ]);
@@ -2150,6 +2228,7 @@ function App() {
       ordersPayload,
       commissionsPayload,
       payoutsPayload,
+      plansPayload,
       auditLogsPayload,
       deliveryLogsPayload
     ] = await Promise.all([
@@ -2164,6 +2243,7 @@ function App() {
       ordersResponse.json(),
       commissionsResponse.json(),
       payoutsResponse.json(),
+      plansResponse.json(),
       auditLogsResponse.json(),
       deliveryLogsResponse.json()
     ]);
@@ -2178,6 +2258,8 @@ function App() {
     setOrders(ordersPayload.orders);
     setCommissionSummaries(commissionsPayload.summaries);
     setPayoutBatches(payoutsPayload.batches);
+    setCommissionPlans(plansPayload.plans);
+    setCommissionRules(plansPayload.rules);
     setAuditLogs(auditLogsPayload.entries);
     setDeliveryLogs(deliveryLogsPayload.deliveries);
   }
@@ -2426,6 +2508,8 @@ function App() {
         <CommissionsPanel
           summaries={commissionSummaries}
           payouts={payoutBatches}
+          plans={commissionPlans}
+          rules={commissionRules}
           onBatchUpdated={(batch) => {
             setPayoutBatches((current) => current.map((entry) => (entry.id === batch.id ? batch : entry)));
             reloadAuditLogs().catch(() => undefined);

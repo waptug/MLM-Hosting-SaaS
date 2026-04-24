@@ -134,6 +134,28 @@ export type EmailDeliveryLog = {
   createdAt: string;
 };
 
+export type CommissionPlanVersion = {
+  id: string;
+  planName: string;
+  versionNumber: number;
+  status: 'active' | 'draft' | 'retired';
+  effectiveFrom: string;
+  notes: string;
+};
+
+export type CommissionRule = {
+  id: string;
+  planVersionId: string;
+  ruleKey: string;
+  ruleLabel: string;
+  ruleType: 'direct' | 'override' | 'workflow' | 'qualification';
+  levelNumber: number;
+  percentRate: number;
+  fixedAmount: number;
+  rankFloor: string;
+  notes: string;
+};
+
 type DatabasePool = {
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
@@ -582,4 +604,57 @@ export async function recordEmailDelivery(input: {
 
   const logs = await listEmailDeliveryLogs();
   return logs.find((entry) => entry.id === deliveryId)!;
+}
+
+export async function listCommissionPlans(): Promise<CommissionPlanVersion[]> {
+  const pool = await getPool();
+  const id = await tenantId(pool);
+  const result = await pool.query<CommissionPlanVersion>(
+    `
+      SELECT
+        id::text AS id,
+        plan_name AS "planName",
+        version_number AS "versionNumber",
+        status,
+        effective_from::text AS "effectiveFrom",
+        notes
+      FROM commission_plan_versions
+      WHERE tenant_id = $1
+      ORDER BY plan_name, version_number DESC
+    `,
+    [id]
+  );
+
+  return result.rows;
+}
+
+export async function listCommissionRules(): Promise<CommissionRule[]> {
+  const pool = await getPool();
+  const id = await tenantId(pool);
+  const result = await pool.query<CommissionRule>(
+    `
+      SELECT
+        rule.id::text AS id,
+        rule.plan_version_id::text AS "planVersionId",
+        rule.rule_key AS "ruleKey",
+        rule.rule_label AS "ruleLabel",
+        rule.rule_type AS "ruleType",
+        rule.level_number AS "levelNumber",
+        rule.percent_rate::text AS "percentRate",
+        rule.fixed_amount::text AS "fixedAmount",
+        rule.rank_floor AS "rankFloor",
+        rule.notes
+      FROM commission_rules rule
+      JOIN commission_plan_versions plan ON plan.id = rule.plan_version_id
+      WHERE plan.tenant_id = $1
+      ORDER BY plan.plan_name, plan.version_number DESC, rule.rule_type, rule.level_number
+    `,
+    [id]
+  );
+
+  return result.rows.map((row) => ({
+    ...row,
+    percentRate: Number(row.percentRate || '0'),
+    fixedAmount: Number(row.fixedAmount || '0')
+  }));
 }

@@ -9,6 +9,7 @@ import type {
   Product,
   SalesGroup
 } from './state.js';
+import { listCommissionRules } from './state.js';
 import type { BusinessRepository } from './repository.js';
 
 type DbPool = {
@@ -309,6 +310,9 @@ async function listOrdersQuery(pool: DbPool) {
 
 async function listCommissionSummaryQuery(pool: DbPool) {
   const { tenantId } = await tenantContext(pool);
+  const rules = await listCommissionRules();
+  const overrideRule = rules.find((rule) => rule.ruleType === 'override' && rule.levelNumber === 1);
+  const overrideRate = overrideRule?.percentRate ?? 0.05;
   const result = await pool.query<{
     memberId: string;
     memberName: string;
@@ -339,8 +343,8 @@ async function listCommissionSummaryQuery(pool: DbPool) {
       ),
       override_totals AS (
         SELECT
-          sponsor.id AS member_id,
-          COALESCE(SUM(ao.quantity * ao.unit_price * 0.05), 0)::text AS override_commission
+        sponsor.id AS member_id,
+          COALESCE(SUM(ao.quantity * ao.unit_price * $2), 0)::text AS override_commission
         FROM members sponsor
         LEFT JOIN members seller ON seller.sponsor_member_id = sponsor.id
         LEFT JOIN active_orders ao ON ao.selling_member_id = seller.id
@@ -366,7 +370,7 @@ async function listCommissionSummaryQuery(pool: DbPool) {
       WHERE m.tenant_id = $1
       ORDER BY (dt.direct_commission::numeric + ot.override_commission::numeric) DESC, m.last_name
     `,
-    [tenantId]
+    [tenantId, overrideRate]
   );
 
   return result.rows.map((row) => ({

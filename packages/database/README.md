@@ -38,6 +38,9 @@ Current starter migration:
 - [0010_payout_batches.sql](./0010_payout_batches.sql)
 - [0011_demo_payout_batches.sql](./0011_demo_payout_batches.sql)
 - [0012_password_reset_and_email_logs.sql](./0012_password_reset_and_email_logs.sql)
+- [0013_commission_plans_and_rules.sql](./0013_commission_plans_and_rules.sql)
+- [0014_demo_commission_plan.sql](./0014_demo_commission_plan.sql)
+- [0015_commission_rule_uniqueness.sql](./0015_commission_rule_uniqueness.sql)
 
 Core entity coverage now includes:
 
@@ -52,6 +55,8 @@ Core entity coverage now includes:
 - `payout_batches`
 - `password_reset_tokens`
 - `email_delivery_logs`
+- `commission_plan_versions`
+- `commission_rules`
 
 Current runtime note:
 

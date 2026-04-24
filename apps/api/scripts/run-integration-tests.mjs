@@ -111,6 +111,20 @@ try {
     'Finance role payout capability missing.'
   );
 
+  const commissionPlans = await invoke('GET', '/api/admin/commission-plans', {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(commissionPlans.status === 200, 'Commission plan list request failed.');
+  assert(
+    Array.isArray(commissionPlans.body?.plans) &&
+      commissionPlans.body.plans.some((plan) => plan.planName === 'Default Hosting Commission Plan') &&
+      Array.isArray(commissionPlans.body?.rules) &&
+      commissionPlans.body.rules.some((rule) => rule.ruleKey === 'level-1-override'),
+    'Commission plan list did not return the seeded plan and rules.'
+  );
+
   const forbiddenTenantUsers = await invoke('GET', '/api/admin/tenant-users', {
     headers: {
       'x-tenant-slug': 'demo-hosting-group',
@@ -377,6 +391,7 @@ try {
           'bootstrap',
           'session',
           'finance tenant context',
+          'commission plan list',
           'password login and cookie session',
           'tenant user role denial',
           'sales group create and list',
