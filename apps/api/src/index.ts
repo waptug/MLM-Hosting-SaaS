@@ -1,10 +1,10 @@
 import cors from 'cors';
 import express from 'express';
+import { fileURLToPath } from 'node:url';
 import { allRoles } from '../../../packages/auth/src/model.js';
 import { tenantRoles } from '../../../packages/auth/src/model.js';
 import { attachTenantContext, requireRole } from './auth.js';
 import { config } from './config.js';
-import { demoTenant } from './demo-data.js';
 import { businessRepository, businessRepositoryMode } from './repository-provider.js';
 import {
   addTenantUser,
@@ -13,7 +13,7 @@ import {
   updateTenantSetup
 } from './state.js';
 
-type BootstrapTenant = {
+export type BootstrapTenant = {
   slug: string;
   name: string;
   themePreset: string;
@@ -21,7 +21,7 @@ type BootstrapTenant = {
   ownerEmail: string;
 };
 
-const app = express();
+export const app = express();
 
 app.use(
   cors({
@@ -427,6 +427,8 @@ app.get(
   }
 );
 
-app.listen(config.port, '127.0.0.1', () => {
-  console.log(`MLM Hosting SaaS API listening on http://127.0.0.1:${config.port}`);
-});
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  app.listen(config.port, '127.0.0.1', () => {
+    console.log(`MLM Hosting SaaS API listening on http://127.0.0.1:${config.port}`);
+  });
+}

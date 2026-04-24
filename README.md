@@ -48,6 +48,7 @@ npm run build
 npm run dev:web
 npm run dev:api
 npm run start:api
+npm run test:api
 ```
 
 Required runtime environment:
@@ -67,6 +68,14 @@ Built API startup:
 DATABASE_URL=postgresql://mlm:mlm_dev_password@127.0.0.1:5433/mlm_hosting_saas npm run start:api
 ```
 
+API integration run against the active local API:
+
+```bash
+DATABASE_URL=postgresql://mlm:mlm_dev_password@127.0.0.1:5433/mlm_hosting_saas npm run test:api
+```
+
+`npm run test:api` builds the database and API packages, then runs in-process integration checks against the Express app with the local Postgres database.
+
 ## Verified
 
 - `npm run typecheck`
@@ -79,13 +88,14 @@ DATABASE_URL=postgresql://mlm:mlm_dev_password@127.0.0.1:5433/mlm_hosting_saas n
 - the same order and commission reads through the Vite proxy
 - local Postgres-backed write validation through `POST /api/admin/sales-groups`
 - Postgres-backed onboarding and tenant-user reads through both direct API and Vite proxy
+- automated Postgres-backed API integration run through `npm run test:api`
 
 ## Next Production-Critical Work
 
 - replace demo auth with real authentication, invitations, sessions, and password flows
 - add persisted commission plans and payout approval actions
 - add audit logging, billing/subscription handling, and background jobs
-- add automated tests around the API workflows and commission math
+- expand automated coverage around the API workflows and commission math
 
 ## Planning
 
