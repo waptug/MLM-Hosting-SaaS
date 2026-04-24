@@ -111,6 +111,7 @@ The deploy flow:
 
 Set `DEPLOY_REMOTE_POST_SYNC` in `.deploy.env` if the server should run a post-sync command, such as a restart or migration step.
 If you leave `DEPLOY_REMOTE_POST_SYNC` empty, the script will run a default post-sync command only when `DEPLOY_REMOTE_DB_URL` and `DEPLOY_REMOTE_SESSION_SECRET` are set. Otherwise it will skip the remote post-sync step.
+If you want the script to assemble the remote Postgres URL for you, set `DEPLOY_REMOTE_DB_HOST`, `DEPLOY_REMOTE_DB_PORT`, `DEPLOY_REMOTE_DB_NAME`, `DEPLOY_REMOTE_DB_USER`, and `DEPLOY_REMOTE_DB_PASSWORD`.
 
 ## Deployment Layout
 
