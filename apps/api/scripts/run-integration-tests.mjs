@@ -137,6 +137,18 @@ try {
     'Payout item list did not return seeded batch line items.'
   );
 
+  const commissionSnapshots = await invoke('GET', '/api/admin/commission-snapshots', {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(commissionSnapshots.status === 200, 'Commission snapshot list request failed.');
+  assert(
+    Array.isArray(commissionSnapshots.body?.snapshots) &&
+      commissionSnapshots.body.snapshots.some((snapshot) => snapshot.batchId === payoutBatchId && snapshot.totalCommission > 0),
+    'Commission snapshot list did not return seeded history.'
+  );
+
   const forbiddenTenantUsers = await invoke('GET', '/api/admin/tenant-users', {
     headers: {
       'x-tenant-slug': 'demo-hosting-group',
@@ -405,6 +417,7 @@ try {
           'finance tenant context',
           'commission plan list',
           'payout item list',
+          'commission snapshot list',
           'password login and cookie session',
           'tenant user role denial',
           'sales group create and list',

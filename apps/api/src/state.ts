@@ -113,6 +113,21 @@ export type PayoutItem = {
   notes: string;
 };
 
+export type CommissionSnapshot = {
+  id: string;
+  batchId: string;
+  memberId: string;
+  memberName: string;
+  sponsorName: string;
+  activeOrders: number;
+  directRevenue: number;
+  directCommission: number;
+  overrideCommission: number;
+  totalCommission: number;
+  sourceLabel: string;
+  notes: string;
+};
+
 export type AuditLogEntry = {
   id: string;
   actorEmail: string;
@@ -705,5 +720,41 @@ export async function listPayoutItems(): Promise<PayoutItem[]> {
     overrideCommission: Number(row.overrideCommission || '0'),
     totalAmount: Number(row.totalAmount || '0'),
     orderCount: Number(row.orderCount || '0')
+  }));
+}
+
+export async function listCommissionSnapshots(): Promise<CommissionSnapshot[]> {
+  const pool = await getPool();
+  const id = await tenantId(pool);
+  const result = await pool.query<CommissionSnapshot>(
+    `
+      SELECT
+        snap.id::text AS id,
+        snap.batch_id::text AS "batchId",
+        snap.member_id::text AS "memberId",
+        snap.member_name AS "memberName",
+        snap.sponsor_name AS "sponsorName",
+        snap.active_orders AS "activeOrders",
+        snap.direct_revenue::text AS "directRevenue",
+        snap.direct_commission::text AS "directCommission",
+        snap.override_commission::text AS "overrideCommission",
+        snap.total_commission::text AS "totalCommission",
+        snap.source_label AS "sourceLabel",
+        snap.notes
+      FROM commission_snapshots snap
+      JOIN payout_batches batch ON batch.id = snap.batch_id
+      WHERE batch.tenant_id = $1
+      ORDER BY batch.scheduled_for DESC, snap.total_commission DESC, snap.member_name
+    `,
+    [id]
+  );
+
+  return result.rows.map((row) => ({
+    ...row,
+    activeOrders: Number(row.activeOrders || '0'),
+    directRevenue: Number(row.directRevenue || '0'),
+    directCommission: Number(row.directCommission || '0'),
+    overrideCommission: Number(row.overrideCommission || '0'),
+    totalCommission: Number(row.totalCommission || '0')
   }));
 }

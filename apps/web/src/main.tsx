@@ -214,6 +214,21 @@ type PayoutItem = {
   notes: string;
 };
 
+type CommissionSnapshot = {
+  id: string;
+  batchId: string;
+  memberId: string;
+  memberName: string;
+  sponsorName: string;
+  activeOrders: number;
+  directRevenue: number;
+  directCommission: number;
+  overrideCommission: number;
+  totalCommission: number;
+  sourceLabel: string;
+  notes: string;
+};
+
 type AuditLogEntry = {
   id: string;
   actorEmail: string;
@@ -1546,6 +1561,7 @@ function CommissionsPanel({
   summaries,
   payouts,
   payoutItems,
+  commissionSnapshots,
   plans,
   rules,
   onBatchUpdated
@@ -1553,6 +1569,7 @@ function CommissionsPanel({
   summaries: CommissionSummary[];
   payouts: PayoutBatch[];
   payoutItems: PayoutItem[];
+  commissionSnapshots: CommissionSnapshot[];
   plans: CommissionPlanVersion[];
   rules: CommissionRule[];
   onBatchUpdated: (batch: PayoutBatch) => void;
@@ -1588,6 +1605,7 @@ function CommissionsPanel({
 
   const selectedBatch = payouts.find((batch) => batch.id === selectedBatchId) || null;
   const selectedBatchItems = payoutItems.filter((item) => item.batchId === selectedBatchId);
+  const selectedBatchSnapshots = commissionSnapshots.filter((snapshot) => snapshot.batchId === selectedBatchId);
 
   async function runBatchAction(batchId: string, action: 'approve' | 'pay') {
     setSavingBatchId(batchId);
@@ -1745,6 +1763,38 @@ function CommissionsPanel({
             </div>
           ) : (
             <p className="empty-state">Select a payout batch to view its line items.</p>
+          )}
+        </article>
+
+        <article className="panel">
+          <div className="panel-heading">
+            <h2>Commission Snapshots</h2>
+            <p>Historical payout math captured at the time each batch was prepared.</p>
+          </div>
+          {selectedBatch ? (
+            <div className="user-list">
+              {selectedBatchSnapshots.map((snapshot) => (
+                <div className="user-row" key={snapshot.id}>
+                  <div>
+                    <strong>{snapshot.memberName}</strong>
+                    <p>
+                      {snapshot.activeOrders} orders · direct ${snapshot.directCommission.toFixed(2)} · override $
+                      {snapshot.overrideCommission.toFixed(2)} · revenue ${snapshot.directRevenue.toFixed(2)}
+                    </p>
+                    <p>
+                      {snapshot.sourceLabel}
+                      {snapshot.notes ? ` · ${snapshot.notes}` : ''}
+                    </p>
+                  </div>
+                  <span className="status-pill done">${snapshot.totalCommission.toFixed(2)}</span>
+                </div>
+              ))}
+              {!selectedBatchSnapshots.length ? (
+                <p className="empty-state">No snapshots exist for the selected payout batch yet.</p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="empty-state">Select a payout batch to inspect its snapshot history.</p>
           )}
         </article>
       </section>
@@ -2201,6 +2251,7 @@ function App() {
   const [commissionSummaries, setCommissionSummaries] = React.useState<CommissionSummary[]>([]);
   const [payoutBatches, setPayoutBatches] = React.useState<PayoutBatch[]>([]);
   const [payoutItems, setPayoutItems] = React.useState<PayoutItem[]>([]);
+  const [commissionSnapshots, setCommissionSnapshots] = React.useState<CommissionSnapshot[]>([]);
   const [commissionPlans, setCommissionPlans] = React.useState<CommissionPlanVersion[]>([]);
   const [commissionRules, setCommissionRules] = React.useState<CommissionRule[]>([]);
   const [auditLogs, setAuditLogs] = React.useState<AuditLogEntry[]>([]);
@@ -2257,6 +2308,7 @@ function App() {
       setCommissionSummaries([]);
       setPayoutBatches([]);
       setPayoutItems([]);
+      setCommissionSnapshots([]);
       setCommissionPlans([]);
       setCommissionRules([]);
       setAuditLogs([]);
@@ -2277,6 +2329,7 @@ function App() {
       commissionsResponse,
       payoutsResponse,
       payoutItemsResponse,
+      commissionSnapshotsResponse,
       plansResponse,
       auditLogsResponse,
       deliveryLogsResponse
@@ -2293,6 +2346,7 @@ function App() {
       fetch('/api/admin/commissions'),
       fetch('/api/admin/payouts'),
       fetch('/api/admin/payout-items'),
+      fetch('/api/admin/commission-snapshots'),
       fetch('/api/admin/commission-plans'),
       fetch('/api/admin/audit-logs'),
       fetch('/api/admin/email-delivery-logs')
@@ -2310,6 +2364,7 @@ function App() {
       commissionsPayload,
       payoutsPayload,
       payoutItemsPayload,
+      commissionSnapshotsPayload,
       plansPayload,
       auditLogsPayload,
       deliveryLogsPayload
@@ -2326,6 +2381,7 @@ function App() {
       commissionsResponse.json(),
       payoutsResponse.json(),
       payoutItemsResponse.json(),
+      commissionSnapshotsResponse.json(),
       plansResponse.json(),
       auditLogsResponse.json(),
       deliveryLogsResponse.json()
@@ -2342,6 +2398,7 @@ function App() {
     setCommissionSummaries(commissionsPayload.summaries);
     setPayoutBatches(payoutsPayload.batches);
     setPayoutItems(payoutItemsPayload.items);
+    setCommissionSnapshots(commissionSnapshotsPayload.snapshots);
     setCommissionPlans(plansPayload.plans);
     setCommissionRules(plansPayload.rules);
     setAuditLogs(auditLogsPayload.entries);
@@ -2593,6 +2650,7 @@ function App() {
           summaries={commissionSummaries}
           payouts={payoutBatches}
           payoutItems={payoutItems}
+          commissionSnapshots={commissionSnapshots}
           plans={commissionPlans}
           rules={commissionRules}
           onBatchUpdated={(batch) => {

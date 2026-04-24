@@ -43,6 +43,8 @@ Current starter migration:
 - [0015_commission_rule_uniqueness.sql](./0015_commission_rule_uniqueness.sql)
 - [0016_payout_items.sql](./0016_payout_items.sql)
 - [0017_demo_payout_items.sql](./0017_demo_payout_items.sql)
+- [0018_commission_snapshots.sql](./0018_commission_snapshots.sql)
+- [0019_demo_commission_snapshots.sql](./0019_demo_commission_snapshots.sql)
 
 Core entity coverage now includes:
 
@@ -60,6 +62,7 @@ Core entity coverage now includes:
 - `commission_plan_versions`
 - `commission_rules`
 - `payout_items`
+- `commission_snapshots`
 
 Current runtime note:
 

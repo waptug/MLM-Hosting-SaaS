@@ -47,6 +47,10 @@ Implemented in migration `0002_core_sales_entities.sql`:
 - commissions
 - payout_batches
 - payout_items
+- commission_snapshots
 
 Implemented in migration `0016_payout_items.sql`:
 - `payout_items`
+
+Implemented in migration `0018_commission_snapshots.sql`:
+- `commission_snapshots`

@@ -22,6 +22,7 @@ import {
   getTenantSetup,
   listCommissionPlans,
   listCommissionRules,
+  listCommissionSnapshots,
   listAuditLogs,
   listEmailDeliveryLogs,
   listPayoutItems,
@@ -809,6 +810,15 @@ app.get(
       plans: await listCommissionPlans(),
       rules: await listCommissionRules()
     });
+  }
+);
+
+app.get(
+  '/api/admin/commission-snapshots',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager', 'finance_manager']),
+  async (_req, res) => {
+    res.json({ snapshots: await listCommissionSnapshots() });
   }
 );
 
