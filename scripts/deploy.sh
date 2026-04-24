@@ -118,7 +118,7 @@ fi
 echo "Pushing to GitHub..."
 git push origin "$DEPLOY_GIT_BRANCH"
 
-remote_command="mkdir -p '$DEPLOY_REMOTE_DIR' '$DEPLOY_PUBLIC_DIR' && tar -xpf - -C '$DEPLOY_REMOTE_DIR' && cd '$DEPLOY_REMOTE_DIR' && "
+remote_command="mkdir -p '$DEPLOY_REMOTE_DIR' '$DEPLOY_PUBLIC_DIR' && tar -xzpf - -C '$DEPLOY_REMOTE_DIR' && cd '$DEPLOY_REMOTE_DIR' && "
 publish_command="rm -rf '$DEPLOY_PUBLIC_DIR'/* && cp -a '$DEPLOY_REMOTE_DIR/apps/web/dist/.' '$DEPLOY_PUBLIC_DIR/'"
 
 if [[ -n "$DEPLOY_REMOTE_POST_SYNC" ]]; then
@@ -134,9 +134,9 @@ fi
 
 echo "Syncing release bundle and publishing web artifact on ${remote_target}"
 if [[ -n "$DEPLOY_SSH_PASSWORD" ]]; then
-  tar -cpf - -C "$release_dir" . | env DISPLAY=none SSH_ASKPASS="$temp_askpass" SSH_ASKPASS_REQUIRE=force setsid -w ssh -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password -o PubkeyAuthentication=no "${SSH_ARGS[@]}" "$remote_target" "$remote_command"
+  tar -czpf - -C "$release_dir" . | env DISPLAY=none SSH_ASKPASS="$temp_askpass" SSH_ASKPASS_REQUIRE=force setsid -w ssh -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password -o PubkeyAuthentication=no "${SSH_ARGS[@]}" "$remote_target" "$remote_command"
 else
-  tar -cpf - -C "$release_dir" . | ssh -p "$DEPLOY_SSH_PORT" "$remote_target" "$remote_command"
+  tar -czpf - -C "$release_dir" . | ssh -p "$DEPLOY_SSH_PORT" "$remote_target" "$remote_command"
 fi
 
 echo "Deployment complete."
