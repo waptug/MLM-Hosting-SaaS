@@ -85,6 +85,8 @@ Copy the deploy template and set your SSH details:
 cp .deploy.env.example .deploy.env
 ```
 
+If you are using password-based SSH for the server, set `DEPLOY_SSH_PASSWORD` in `.deploy.env`. If you are using an SSH key, leave it empty.
+
 Then run a one-shot deploy:
 
 ```bash
