@@ -2006,10 +2006,14 @@ function AuthPanel({
       <article className="panel">
         <div className="panel-heading">
           <h2>Local Demo Access</h2>
-          <p>Seeded credentials for the local Postgres tenant.</p>
+          <p>Seeded credentials for the local Postgres tenant. This includes the master admin login for development.</p>
         </div>
         {demoCredentials ? (
           <dl className="session-list">
+            <div>
+              <dt>Role</dt>
+              <dd>Master admin / tenant owner</dd>
+            </div>
             <div>
               <dt>Tenant slug</dt>
               <dd>{demoCredentials.tenantSlug}</dd>
