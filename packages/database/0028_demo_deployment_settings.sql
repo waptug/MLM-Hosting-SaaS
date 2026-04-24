@@ -1,0 +1,53 @@
+INSERT INTO tenant_deployment_settings (
+  id,
+  tenant_id,
+  database_host,
+  database_port,
+  database_name,
+  database_user,
+  database_path,
+  app_root_path,
+  backup_path,
+  logs_path,
+  public_url,
+  api_url,
+  trusted_origins,
+  session_cookie_domain,
+  backup_retention_days,
+  notes
+)
+VALUES (
+  '00000000-0000-0000-0000-000000000901',
+  '00000000-0000-0000-0000-000000000001',
+  '127.0.0.1',
+  5433,
+  'mlm_hosting_saas',
+  'mlm',
+  '/var/lib/postgresql/data',
+  '/home/michael/reactproject/MLM-Hosting-SaaS',
+  '/home/michael/reactproject/MLM-Hosting-SaaS/backups',
+  '/home/michael/reactproject/MLM-Hosting-SaaS/logs',
+  'http://localhost:5174',
+  'http://127.0.0.1:4000',
+  'http://localhost:5174, http://127.0.0.1:5174',
+  'localhost',
+  7,
+  'Local development defaults. Update these values before using a dedicated server.'
+)
+ON CONFLICT (tenant_id) DO UPDATE
+SET
+  database_host = EXCLUDED.database_host,
+  database_port = EXCLUDED.database_port,
+  database_name = EXCLUDED.database_name,
+  database_user = EXCLUDED.database_user,
+  database_path = EXCLUDED.database_path,
+  app_root_path = EXCLUDED.app_root_path,
+  backup_path = EXCLUDED.backup_path,
+  logs_path = EXCLUDED.logs_path,
+  public_url = EXCLUDED.public_url,
+  api_url = EXCLUDED.api_url,
+  trusted_origins = EXCLUDED.trusted_origins,
+  session_cookie_domain = EXCLUDED.session_cookie_domain,
+  backup_retention_days = EXCLUDED.backup_retention_days,
+  notes = EXCLUDED.notes,
+  updated_at = NOW();

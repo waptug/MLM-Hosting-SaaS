@@ -300,6 +300,23 @@ type BillingInvoice = {
   notes: string;
 };
 
+type DeploymentSettings = {
+  databaseHost: string;
+  databasePort: number;
+  databaseName: string;
+  databaseUser: string;
+  databasePath: string;
+  appRootPath: string;
+  backupPath: string;
+  logsPath: string;
+  publicUrl: string;
+  apiUrl: string;
+  trustedOrigins: string;
+  sessionCookieDomain: string;
+  backupRetentionDays: number;
+  notes: string;
+};
+
 type ManualSection = {
   title: string;
   summary: string;
@@ -486,7 +503,17 @@ const manualSections: ManualSection[] = [
     ]
   },
   {
-    title: '7. Recommended Operating Workflow',
+    title: '7. Deployment Settings',
+    summary: 'The Deployment tab stores server paths, local database references, and production URL settings for operators.',
+    items: [
+      'Use the Deployment tab to record the database host, port, database name, and database user for the runtime environment.',
+      'Keep app root, backup, and log paths documented so server operators know where the live files and artifacts belong.',
+      'Set the public URL, API URL, trusted origins, and session cookie domain before moving to a production server.',
+      'Treat this page as operator metadata. It helps the team manage the server, but it does not rewrite environment variables automatically.'
+    ]
+  },
+  {
+    title: '8. Recommended Operating Workflow',
     summary: 'This is the clean order of operations for a new tenant or reseller launch.',
     items: [
       'Configure onboarding and tenant users.',
@@ -499,12 +526,13 @@ const manualSections: ManualSection[] = [
     ]
   },
   {
-    title: '8. Current Build Limits',
+    title: '9. Current Build Limits',
     summary: 'These notes matter for operating the current version correctly.',
     items: [
       'Tenant onboarding, tenant users, and the business domain are PostgreSQL-backed for the demo tenant.',
       'Password login, invitation acceptance, and session cookies are now active for the local demo tenant.',
       'Email delivery, password reset, billing/invoice workflows, and launch hardening are active for the current build.',
+      'Deployment settings are now stored in the app, but you still need to apply them to the server environment yourself.',
       'Session cookies now support production-friendly secure, domain, and SameSite settings.',
       'Unsafe browser requests are origin-checked, and new logins rotate older sessions for the same user.',
       'Audit logging now captures key admin create actions and setup updates.',
@@ -589,6 +617,23 @@ const deepDiveSections: DeepDiveSection[] = [
     ]
   }
 ];
+
+const blankDeploymentSettings: DeploymentSettings = {
+  databaseHost: '',
+  databasePort: 5432,
+  databaseName: '',
+  databaseUser: '',
+  databasePath: '',
+  appRootPath: '',
+  backupPath: '',
+  logsPath: '',
+  publicUrl: '',
+  apiUrl: '',
+  trustedOrigins: '',
+  sessionCookieDomain: '',
+  backupRetentionDays: 7,
+  notes: ''
+};
 
 function StatusPill({ status }: { status: StepStatus }) {
   return <span className={`status-pill ${status}`}>{status === 'done' ? 'Done' : status === 'active' ? 'In Progress' : 'Queued'}</span>;
@@ -2610,6 +2655,213 @@ function BillingPanel({
   );
 }
 
+function DeploymentPanel({
+  settings,
+  onSaved
+}: {
+  settings: DeploymentSettings;
+  onSaved: (settings: DeploymentSettings) => void;
+}) {
+  const [form, setForm] = React.useState({
+    databaseHost: settings.databaseHost,
+    databasePort: String(settings.databasePort),
+    databaseName: settings.databaseName,
+    databaseUser: settings.databaseUser,
+    databasePath: settings.databasePath,
+    appRootPath: settings.appRootPath,
+    backupPath: settings.backupPath,
+    logsPath: settings.logsPath,
+    publicUrl: settings.publicUrl,
+    apiUrl: settings.apiUrl,
+    trustedOrigins: settings.trustedOrigins,
+    sessionCookieDomain: settings.sessionCookieDomain,
+    backupRetentionDays: String(settings.backupRetentionDays),
+    notes: settings.notes
+  });
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  React.useEffect(() => {
+    setForm({
+      databaseHost: settings.databaseHost,
+      databasePort: String(settings.databasePort),
+      databaseName: settings.databaseName,
+      databaseUser: settings.databaseUser,
+      databasePath: settings.databasePath,
+      appRootPath: settings.appRootPath,
+      backupPath: settings.backupPath,
+      logsPath: settings.logsPath,
+      publicUrl: settings.publicUrl,
+      apiUrl: settings.apiUrl,
+      trustedOrigins: settings.trustedOrigins,
+      sessionCookieDomain: settings.sessionCookieDomain,
+      backupRetentionDays: String(settings.backupRetentionDays),
+      notes: settings.notes
+    });
+  }, [settings]);
+
+  function setField(field: keyof typeof form, value: string) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+
+    const response = await fetch('/api/admin/deployment-settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...form,
+        databasePort: Number(form.databasePort || '0'),
+        backupRetentionDays: Number(form.backupRetentionDays || '0')
+      })
+    });
+    const payload = await response.json();
+    setSaving(false);
+
+    if (!response.ok) {
+      setError(payload.error || 'Unable to save deployment settings.');
+      return;
+    }
+
+    onSaved(payload.settings);
+  }
+
+  return (
+    <section className="content-grid">
+      <article className="panel">
+        <div className="panel-heading">
+          <h2>Deployment Settings</h2>
+          <p>Store server paths, runtime URLs, and local database details for the operator team.</p>
+        </div>
+        <form className="form-grid onboarding-form" onSubmit={submit}>
+          <label>
+            Database host
+            <input value={form.databaseHost} onChange={(event) => setField('databaseHost', event.target.value)} />
+          </label>
+          <label>
+            Database port
+            <input type="number" value={form.databasePort} onChange={(event) => setField('databasePort', event.target.value)} />
+          </label>
+          <label>
+            Database name
+            <input value={form.databaseName} onChange={(event) => setField('databaseName', event.target.value)} />
+          </label>
+          <label>
+            Database user
+            <input value={form.databaseUser} onChange={(event) => setField('databaseUser', event.target.value)} />
+          </label>
+          <label>
+            Database path
+            <input value={form.databasePath} onChange={(event) => setField('databasePath', event.target.value)} />
+          </label>
+          <label>
+            App root path
+            <input value={form.appRootPath} onChange={(event) => setField('appRootPath', event.target.value)} />
+          </label>
+          <label>
+            Backup path
+            <input value={form.backupPath} onChange={(event) => setField('backupPath', event.target.value)} />
+          </label>
+          <label>
+            Logs path
+            <input value={form.logsPath} onChange={(event) => setField('logsPath', event.target.value)} />
+          </label>
+          <label>
+            Public URL
+            <input value={form.publicUrl} onChange={(event) => setField('publicUrl', event.target.value)} />
+          </label>
+          <label>
+            API URL
+            <input value={form.apiUrl} onChange={(event) => setField('apiUrl', event.target.value)} />
+          </label>
+          <label>
+            Trusted origins
+            <input value={form.trustedOrigins} onChange={(event) => setField('trustedOrigins', event.target.value)} />
+          </label>
+          <label>
+            Session cookie domain
+            <input value={form.sessionCookieDomain} onChange={(event) => setField('sessionCookieDomain', event.target.value)} />
+          </label>
+          <label>
+            Backup retention days
+            <input
+              type="number"
+              min={1}
+              value={form.backupRetentionDays}
+              onChange={(event) => setField('backupRetentionDays', event.target.value)}
+            />
+          </label>
+          <label className="full-width">
+            Notes
+            <textarea value={form.notes} onChange={(event) => setField('notes', event.target.value)} rows={4} />
+          </label>
+          {error ? <p className="error full-width">{error}</p> : null}
+          <div className="form-actions full-width">
+            <button type="submit" className="primary" disabled={saving}>
+              <Building2 size={16} />
+              {saving ? 'Saving' : 'Save deployment settings'}
+            </button>
+          </div>
+        </form>
+      </article>
+
+      <article className="panel">
+        <div className="panel-heading">
+          <h2>Operator Notes</h2>
+          <p>These values are the current recorded deployment profile, not live environment variables.</p>
+        </div>
+        <dl className="session-list">
+          <div>
+            <dt>Database</dt>
+            <dd>
+              {settings.databaseUser || 'unset'}@{settings.databaseHost || 'unset'}:{settings.databasePort} / {settings.databaseName || 'unset'}
+            </dd>
+          </div>
+          <div>
+            <dt>Application path</dt>
+            <dd>{settings.appRootPath || 'unset'}</dd>
+          </div>
+          <div>
+            <dt>Backup path</dt>
+            <dd>{settings.backupPath || 'unset'}</dd>
+          </div>
+          <div>
+            <dt>Log path</dt>
+            <dd>{settings.logsPath || 'unset'}</dd>
+          </div>
+          <div>
+            <dt>Public URL</dt>
+            <dd>{settings.publicUrl || 'unset'}</dd>
+          </div>
+          <div>
+            <dt>API URL</dt>
+            <dd>{settings.apiUrl || 'unset'}</dd>
+          </div>
+          <div>
+            <dt>Trusted origins</dt>
+            <dd>{settings.trustedOrigins || 'unset'}</dd>
+          </div>
+          <div>
+            <dt>Cookie domain</dt>
+            <dd>{settings.sessionCookieDomain || 'unset'}</dd>
+          </div>
+          <div>
+            <dt>Retention</dt>
+            <dd>{settings.backupRetentionDays} days</dd>
+          </div>
+          <div className="full-width">
+            <dt>Notes</dt>
+            <dd>{settings.notes || 'No operator notes saved.'}</dd>
+          </div>
+        </dl>
+      </article>
+    </section>
+  );
+}
+
 function ManualPanel() {
   const [manualView, setManualView] = React.useState<'guide' | 'production' | 'developer'>('guide');
 
@@ -3058,7 +3310,7 @@ function AuthPanel({
 
 function App() {
   const [screen, setScreen] = React.useState<
-    'overview' | 'onboarding' | 'users' | 'invitations' | 'sales-groups' | 'members' | 'customers' | 'orders' | 'commissions' | 'billing' | 'audit' | 'access' | 'manual'
+    'overview' | 'onboarding' | 'users' | 'invitations' | 'sales-groups' | 'members' | 'customers' | 'orders' | 'commissions' | 'billing' | 'deployment' | 'audit' | 'access' | 'manual'
   >('overview');
   const [session, setSession] = React.useState<SessionPayload | null>(null);
   const [setup, setSetup] = React.useState<TenantSetup | null>(null);
@@ -3080,6 +3332,7 @@ function App() {
   const [commissionRules, setCommissionRules] = React.useState<CommissionRule[]>([]);
   const [billingSubscription, setBillingSubscription] = React.useState<TenantSubscription | null>(null);
   const [billingInvoices, setBillingInvoices] = React.useState<BillingInvoice[]>([]);
+  const [deploymentSettings, setDeploymentSettings] = React.useState<DeploymentSettings>(blankDeploymentSettings);
   const [auditLogs, setAuditLogs] = React.useState<AuditLogEntry[]>([]);
   const [permissionMatrix, setPermissionMatrix] = React.useState<PermissionMatrixRow[]>([]);
 
@@ -3140,6 +3393,7 @@ function App() {
       setCommissionRules([]);
       setBillingSubscription(null);
       setBillingInvoices([]);
+      setDeploymentSettings(blankDeploymentSettings);
       setAuditLogs([]);
       setPermissionMatrix([]);
       setDeliveryLogs([]);
@@ -3161,6 +3415,7 @@ function App() {
       payoutItemsResponse,
       commissionSnapshotsResponse,
       billingResponse,
+      deploymentSettingsResponse,
       plansResponse,
       permissionsResponse,
       auditLogsResponse,
@@ -3180,6 +3435,7 @@ function App() {
       fetch('/api/admin/payout-items'),
       fetch('/api/admin/commission-snapshots'),
       fetch('/api/admin/billing'),
+      fetch('/api/admin/deployment-settings'),
       fetch('/api/admin/commission-plans'),
       fetch('/api/admin/permission-matrix'),
       fetch('/api/admin/audit-logs'),
@@ -3200,6 +3456,7 @@ function App() {
       payoutItemsPayload,
       commissionSnapshotsPayload,
       billingPayload,
+      deploymentSettingsPayload,
       plansPayload,
       permissionsPayload,
       auditLogsPayload,
@@ -3219,6 +3476,7 @@ function App() {
       payoutItemsResponse.json(),
       commissionSnapshotsResponse.json(),
       billingResponse.json(),
+      deploymentSettingsResponse.json(),
       plansResponse.json(),
       permissionsResponse.json(),
       auditLogsResponse.json(),
@@ -3239,6 +3497,7 @@ function App() {
     setCommissionSnapshots(commissionSnapshotsPayload.snapshots);
     setBillingSubscription(billingPayload.subscription);
     setBillingInvoices(billingPayload.invoices);
+    setDeploymentSettings(deploymentSettingsPayload.settings);
     setCommissionPlans(plansPayload.plans);
     setCommissionRules(plansPayload.rules);
     setPermissionMatrix(permissionsPayload.matrix);
@@ -3357,6 +3616,10 @@ function App() {
         <button className={screen === 'billing' ? 'active' : ''} onClick={() => setScreen('billing')}>
           <Settings2 size={16} />
           Billing
+        </button>
+        <button className={screen === 'deployment' ? 'active' : ''} onClick={() => setScreen('deployment')}>
+          <Building2 size={16} />
+          Deployment
         </button>
         <button className={screen === 'audit' ? 'active' : ''} onClick={() => setScreen('audit')}>
           <ScrollText size={16} />
@@ -3524,6 +3787,15 @@ function App() {
           }}
           onInvoicePaid={(invoice) => {
             setBillingInvoices((current) => current.map((entry) => (entry.id === invoice.id ? invoice : entry)));
+            reloadAuditLogs().catch(() => undefined);
+          }}
+        />
+      ) : null}
+      {session && screen === 'deployment' && deploymentSettings ? (
+        <DeploymentPanel
+          settings={deploymentSettings}
+          onSaved={(settings) => {
+            setDeploymentSettings(settings);
             reloadAuditLogs().catch(() => undefined);
           }}
         />

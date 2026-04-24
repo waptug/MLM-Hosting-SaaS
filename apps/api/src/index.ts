@@ -23,6 +23,7 @@ import {
   addTenantUser,
   createTenantInvitation,
   getBillingSubscription,
+  getDeploymentSettings,
   getTenantSetup,
   listCommissionPlans,
   listCommissionRules,
@@ -39,6 +40,7 @@ import {
   recordEmailDelivery,
   recordAuditLog,
   updateBillingSubscription,
+  updateDeploymentSettings,
   updateTenantSetup
 } from './state.js';
 
@@ -480,6 +482,59 @@ app.put(
     });
 
     res.json({ setup });
+  }
+);
+
+app.get(
+  '/api/admin/deployment-settings',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager']),
+  async (_req, res) => {
+    res.json({ settings: await getDeploymentSettings() });
+  }
+);
+
+app.put(
+  '/api/admin/deployment-settings',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager']),
+  async (req, res) => {
+    const payload = req.body || {};
+    const currentSettings = await getDeploymentSettings();
+    const nextSettings = await updateDeploymentSettings({
+      databaseHost: String(payload.databaseHost || '').trim() || currentSettings.databaseHost,
+      databasePort: Number.isFinite(Number(payload.databasePort)) ? Number(payload.databasePort) : currentSettings.databasePort,
+      databaseName: String(payload.databaseName || '').trim() || currentSettings.databaseName,
+      databaseUser: String(payload.databaseUser || '').trim() || currentSettings.databaseUser,
+      databasePath: String(payload.databasePath || '').trim() || currentSettings.databasePath,
+      appRootPath: String(payload.appRootPath || '').trim() || currentSettings.appRootPath,
+      backupPath: String(payload.backupPath || '').trim() || currentSettings.backupPath,
+      logsPath: String(payload.logsPath || '').trim() || currentSettings.logsPath,
+      publicUrl: String(payload.publicUrl || '').trim() || currentSettings.publicUrl,
+      apiUrl: String(payload.apiUrl || '').trim() || currentSettings.apiUrl,
+      trustedOrigins: String(payload.trustedOrigins || '').trim() || currentSettings.trustedOrigins,
+      sessionCookieDomain: String(payload.sessionCookieDomain || '').trim() || currentSettings.sessionCookieDomain,
+      backupRetentionDays: Number.isFinite(Number(payload.backupRetentionDays))
+        ? Number(payload.backupRetentionDays)
+        : currentSettings.backupRetentionDays,
+      notes: String(payload.notes || '').trim() || currentSettings.notes
+    });
+
+    await recordAuditLog({
+      actorEmail: req.tenantContext?.user.email,
+      actionKey: 'deployment.settings.updated',
+      entityType: 'tenant_deployment_settings',
+      entityId: req.tenantContext?.tenant.id,
+      summary: 'Updated tenant deployment settings.',
+      details: {
+        databaseHost: nextSettings.databaseHost,
+        databaseName: nextSettings.databaseName,
+        publicUrl: nextSettings.publicUrl,
+        apiUrl: nextSettings.apiUrl
+      }
+    });
+
+    res.json({ settings: nextSettings });
   }
 );
 

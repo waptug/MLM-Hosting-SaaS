@@ -30,6 +30,7 @@ let payoutBatchStateResetNeeded = false;
 let billingInvoiceStateResetNeeded = false;
 let billingSubscriptionCancelResetNeeded = false;
 let originalTenantSetup = null;
+let originalDeploymentSettings = null;
 const payoutBatchId = '00000000-0000-0000-0000-000000000601';
 const billingInvoiceId = '00000000-0000-0000-0000-000000000811';
 const uniqueSuffix = randomUUID().slice(0, 8).toUpperCase();
@@ -205,10 +206,47 @@ try {
   });
   assert(billing.status === 200, 'Billing summary request failed.');
   assert(
-    billing.body?.subscription?.planKey === 'growth' &&
+      billing.body?.subscription?.planKey === 'growth' &&
       Array.isArray(billing.body?.invoices) &&
       billing.body.invoices.some((invoice) => invoice.invoiceNumber === 'INV-2026-004' && invoice.status === 'open'),
     'Billing summary did not return seeded subscription and invoice data.'
+  );
+
+  const deploymentSettingsBeforeUpdate = await invoke('GET', '/api/admin/deployment-settings', {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(deploymentSettingsBeforeUpdate.status === 200, 'Deployment settings read request failed.');
+  originalDeploymentSettings = deploymentSettingsBeforeUpdate.body?.settings || null;
+
+  const deploymentSettingsUpdate = await invoke('PUT', '/api/admin/deployment-settings', {
+    headers: {
+      'content-type': 'application/json',
+      cookie: sessionCookie
+    },
+    body: {
+      databaseHost: '127.0.0.1',
+      databasePort: 5433,
+      databaseName: 'mlm_hosting_saas',
+      databaseUser: 'mlm',
+      databasePath: '/var/lib/postgresql/data',
+      appRootPath: '/home/michael/reactproject/MLM-Hosting-SaaS',
+      backupPath: '/home/michael/reactproject/MLM-Hosting-SaaS/backups',
+      logsPath: '/home/michael/reactproject/MLM-Hosting-SaaS/logs',
+      publicUrl: 'http://localhost:5174',
+      apiUrl: 'http://127.0.0.1:4000',
+      trustedOrigins: 'http://localhost:5174, http://127.0.0.1:5174',
+      sessionCookieDomain: 'localhost',
+      backupRetentionDays: 7,
+      notes: 'Integration test deployment settings.'
+    }
+  });
+  assert(deploymentSettingsUpdate.status === 200, 'Deployment settings update failed.');
+  assert(
+    deploymentSettingsUpdate.body?.settings?.databaseName === 'mlm_hosting_saas' &&
+      deploymentSettingsUpdate.body?.settings?.publicUrl === 'http://localhost:5174',
+    'Deployment settings did not persist expected values.'
   );
 
   const permissionMatrix = await invoke('GET', '/api/admin/permission-matrix', {
@@ -676,6 +714,7 @@ try {
           'commission snapshot list',
           'billing summary and invoice pay',
           'permission matrix and commission summary',
+          'deployment settings read and update',
           'password login and cookie session',
           'tenant user role denial',
           'sales group create and list',
@@ -781,6 +820,52 @@ try {
         originalTenantSetup.emailFooter || ''
       ]
     );
+  }
+
+  if (originalDeploymentSettings) {
+    await pool.query(
+      `
+        UPDATE tenant_deployment_settings
+        SET
+          database_host = $2,
+          database_port = $3,
+          database_name = $4,
+          database_user = $5,
+          database_path = $6,
+          app_root_path = $7,
+          backup_path = $8,
+          logs_path = $9,
+          public_url = $10,
+          api_url = $11,
+          trusted_origins = $12,
+          session_cookie_domain = $13,
+          backup_retention_days = $14,
+          notes = $15,
+          updated_at = NOW()
+        WHERE tenant_id = $1
+      `,
+      [
+        '00000000-0000-0000-0000-000000000001',
+        originalDeploymentSettings.databaseHost,
+        originalDeploymentSettings.databasePort,
+        originalDeploymentSettings.databaseName,
+        originalDeploymentSettings.databaseUser,
+        originalDeploymentSettings.databasePath,
+        originalDeploymentSettings.appRootPath,
+        originalDeploymentSettings.backupPath,
+        originalDeploymentSettings.logsPath,
+        originalDeploymentSettings.publicUrl,
+        originalDeploymentSettings.apiUrl,
+        originalDeploymentSettings.trustedOrigins,
+        originalDeploymentSettings.sessionCookieDomain,
+        originalDeploymentSettings.backupRetentionDays,
+        originalDeploymentSettings.notes || ''
+      ]
+    );
+    await pool.query('DELETE FROM audit_logs WHERE entity_type = $1 AND action_key = $2', [
+      'tenant_deployment_settings',
+      'deployment.settings.updated'
+    ]);
   }
 
   if (passwordResetTokenForOwner) {

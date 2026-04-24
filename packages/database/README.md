@@ -52,6 +52,8 @@ Current starter migration:
 - [0024_demo_level_two_commission_rule.sql](./0024_demo_level_two_commission_rule.sql)
 - [0025_demo_level_two_commission_qualification.sql](./0025_demo_level_two_commission_qualification.sql)
 - [0026_demo_commission_hierarchy_expansion.sql](./0026_demo_commission_hierarchy_expansion.sql)
+- [0027_tenant_deployment_settings.sql](./0027_tenant_deployment_settings.sql)
+- [0028_demo_deployment_settings.sql](./0028_demo_deployment_settings.sql)
 
 Core entity coverage now includes:
 

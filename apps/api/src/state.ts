@@ -18,6 +18,23 @@ export type TenantSetup = {
   emailFooter: string;
 };
 
+export type DeploymentSettings = {
+  databaseHost: string;
+  databasePort: number;
+  databaseName: string;
+  databaseUser: string;
+  databasePath: string;
+  appRootPath: string;
+  backupPath: string;
+  logsPath: string;
+  publicUrl: string;
+  apiUrl: string;
+  trustedOrigins: string;
+  sessionCookieDomain: string;
+  backupRetentionDays: number;
+  notes: string;
+};
+
 export type TenantSubscription = {
   id: string;
   tenantId: string;
@@ -228,6 +245,25 @@ async function getPool(): Promise<DatabasePool> {
   return pool;
 }
 
+function blankDeploymentSettings(): DeploymentSettings {
+  return {
+    databaseHost: '',
+    databasePort: 5432,
+    databaseName: '',
+    databaseUser: '',
+    databasePath: '',
+    appRootPath: '',
+    backupPath: '',
+    logsPath: '',
+    publicUrl: '',
+    apiUrl: '',
+    trustedOrigins: '',
+    sessionCookieDomain: '',
+    backupRetentionDays: 7,
+    notes: ''
+  };
+}
+
 async function tenantId(pool: DatabasePool) {
   const result = await pool.query<{ id: string }>('SELECT id::text AS id FROM tenants WHERE slug = $1', [
     demoTenant.slug
@@ -369,6 +405,152 @@ export async function updateTenantSetup(input: Partial<TenantSetup>) {
   demoTenant.status = nextSetup.status;
 
   return getTenantSetup();
+}
+
+export async function getDeploymentSettings(): Promise<DeploymentSettings> {
+  const pool = await getPool();
+  const id = await tenantId(pool);
+  const result = await pool.query<{
+    databaseHost: string;
+    databasePort: number;
+    databaseName: string;
+    databaseUser: string;
+    databasePath: string;
+    appRootPath: string;
+    backupPath: string;
+    logsPath: string;
+    publicUrl: string;
+    apiUrl: string;
+    trustedOrigins: string;
+    sessionCookieDomain: string;
+    backupRetentionDays: number;
+    notes: string;
+  }>(
+    `
+      SELECT
+        database_host AS "databaseHost",
+        database_port AS "databasePort",
+        database_name AS "databaseName",
+        database_user AS "databaseUser",
+        database_path AS "databasePath",
+        app_root_path AS "appRootPath",
+        backup_path AS "backupPath",
+        logs_path AS "logsPath",
+        public_url AS "publicUrl",
+        api_url AS "apiUrl",
+        trusted_origins AS "trustedOrigins",
+        session_cookie_domain AS "sessionCookieDomain",
+        backup_retention_days AS "backupRetentionDays",
+        notes
+      FROM tenant_deployment_settings
+      WHERE tenant_id = $1
+    `,
+    [id]
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    return blankDeploymentSettings();
+  }
+
+  return {
+    databaseHost: row.databaseHost,
+    databasePort: Number(row.databasePort || 5432),
+    databaseName: row.databaseName,
+    databaseUser: row.databaseUser,
+    databasePath: row.databasePath,
+    appRootPath: row.appRootPath,
+    backupPath: row.backupPath,
+    logsPath: row.logsPath,
+    publicUrl: row.publicUrl,
+    apiUrl: row.apiUrl,
+    trustedOrigins: row.trustedOrigins,
+    sessionCookieDomain: row.sessionCookieDomain,
+    backupRetentionDays: Number(row.backupRetentionDays || 7),
+    notes: row.notes
+  };
+}
+
+export async function updateDeploymentSettings(input: Partial<DeploymentSettings>) {
+  const pool = await getPool();
+  const id = await tenantId(pool);
+  const current = await getDeploymentSettings();
+
+  const nextSettings: DeploymentSettings = {
+    databaseHost: input.databaseHost ?? current.databaseHost,
+    databasePort: Number(input.databasePort ?? current.databasePort ?? 5432),
+    databaseName: input.databaseName ?? current.databaseName,
+    databaseUser: input.databaseUser ?? current.databaseUser,
+    databasePath: input.databasePath ?? current.databasePath,
+    appRootPath: input.appRootPath ?? current.appRootPath,
+    backupPath: input.backupPath ?? current.backupPath,
+    logsPath: input.logsPath ?? current.logsPath,
+    publicUrl: input.publicUrl ?? current.publicUrl,
+    apiUrl: input.apiUrl ?? current.apiUrl,
+    trustedOrigins: input.trustedOrigins ?? current.trustedOrigins,
+    sessionCookieDomain: input.sessionCookieDomain ?? current.sessionCookieDomain,
+    backupRetentionDays: Number(input.backupRetentionDays ?? current.backupRetentionDays ?? 7),
+    notes: input.notes ?? current.notes
+  };
+
+  await pool.query(
+    `
+      INSERT INTO tenant_deployment_settings (
+        id,
+        tenant_id,
+        database_host,
+        database_port,
+        database_name,
+        database_user,
+        database_path,
+        app_root_path,
+        backup_path,
+        logs_path,
+        public_url,
+        api_url,
+        trusted_origins,
+        session_cookie_domain,
+        backup_retention_days,
+        notes
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      ON CONFLICT (tenant_id) DO UPDATE SET
+        database_host = EXCLUDED.database_host,
+        database_port = EXCLUDED.database_port,
+        database_name = EXCLUDED.database_name,
+        database_user = EXCLUDED.database_user,
+        database_path = EXCLUDED.database_path,
+        app_root_path = EXCLUDED.app_root_path,
+        backup_path = EXCLUDED.backup_path,
+        logs_path = EXCLUDED.logs_path,
+        public_url = EXCLUDED.public_url,
+        api_url = EXCLUDED.api_url,
+        trusted_origins = EXCLUDED.trusted_origins,
+        session_cookie_domain = EXCLUDED.session_cookie_domain,
+        backup_retention_days = EXCLUDED.backup_retention_days,
+        notes = EXCLUDED.notes,
+        updated_at = NOW()
+    `,
+    [
+      randomUUID(),
+      id,
+      nextSettings.databaseHost,
+      nextSettings.databasePort,
+      nextSettings.databaseName,
+      nextSettings.databaseUser,
+      nextSettings.databasePath,
+      nextSettings.appRootPath,
+      nextSettings.backupPath,
+      nextSettings.logsPath,
+      nextSettings.publicUrl,
+      nextSettings.apiUrl,
+      nextSettings.trustedOrigins,
+      nextSettings.sessionCookieDomain,
+      nextSettings.backupRetentionDays,
+      nextSettings.notes
+    ]
+  );
+
+  return getDeploymentSettings();
 }
 
 export async function listTenantUsers(): Promise<Array<AuthenticatedUser & { role: RoleKey }>> {

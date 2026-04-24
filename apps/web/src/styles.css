@@ -518,13 +518,19 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   background: #fbfaf7;
   border: 1px solid #d7d2c7;
   border-radius: 8px;
   min-height: 40px;
   padding: 9px 10px;
   width: 100%;
+}
+
+textarea {
+  min-height: 96px;
+  resize: vertical;
 }
 
 .form-actions {
