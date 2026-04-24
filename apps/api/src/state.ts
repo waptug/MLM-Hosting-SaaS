@@ -14,6 +14,36 @@ export type TenantSetup = {
   primaryDomain: string;
 };
 
+export type TenantSubscription = {
+  id: string;
+  tenantId: string;
+  planKey: string;
+  planName: string;
+  billingInterval: 'monthly' | 'annual';
+  status: 'trialing' | 'active' | 'past_due' | 'canceled';
+  seatLimit: number;
+  pricePerPeriod: number;
+  currency: string;
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
+  trialEndsAt: string | null;
+  cancelAtPeriodEnd: boolean;
+};
+
+export type BillingInvoice = {
+  id: string;
+  subscriptionId: string;
+  invoiceNumber: string;
+  periodLabel: string;
+  issuedAt: string;
+  dueAt: string;
+  status: 'draft' | 'open' | 'paid' | 'void';
+  amountDue: number;
+  amountPaid: number;
+  balanceDue: number;
+  notes: string;
+};
+
 export type SalesGroup = {
   id: string;
   tenantSlug: string;
@@ -757,4 +787,190 @@ export async function listCommissionSnapshots(): Promise<CommissionSnapshot[]> {
     overrideCommission: Number(row.overrideCommission || '0'),
     totalCommission: Number(row.totalCommission || '0')
   }));
+}
+
+export async function getBillingSubscription(): Promise<TenantSubscription> {
+  return getTenantSubscription();
+}
+
+export async function listBillingInvoiceRecords(): Promise<BillingInvoice[]> {
+  return listBillingInvoices();
+}
+
+export async function updateBillingSubscription(input: Partial<TenantSubscription>) {
+  return updateTenantSubscription(input);
+}
+
+export async function markInvoicePaid(invoiceId: string, actorEmail: string) {
+  return markBillingInvoicePaid(invoiceId, actorEmail);
+}
+
+export async function getTenantSubscription(): Promise<TenantSubscription> {
+  const pool = await getPool();
+  const id = await tenantId(pool);
+  const result = await pool.query<TenantSubscription>(
+    `
+      SELECT
+        id::text AS id,
+        tenant_id::text AS "tenantId",
+        plan_key AS "planKey",
+        plan_name AS "planName",
+        billing_interval AS "billingInterval",
+        status,
+        seat_limit AS "seatLimit",
+        price_per_period::text AS "pricePerPeriod",
+        currency,
+        current_period_start::text AS "currentPeriodStart",
+        current_period_end::text AS "currentPeriodEnd",
+        trial_ends_at::text AS "trialEndsAt",
+        cancel_at_period_end AS "cancelAtPeriodEnd"
+      FROM tenant_subscriptions
+      WHERE tenant_id = $1
+      LIMIT 1
+    `,
+    [id]
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    throw new Error(`Subscription for tenant ${demoTenant.slug} was not found.`);
+  }
+
+  return {
+    ...row,
+    seatLimit: Number(row.seatLimit || '0'),
+    pricePerPeriod: Number(row.pricePerPeriod || '0')
+  };
+}
+
+export async function updateTenantSubscription(input: Partial<TenantSubscription>) {
+  const pool = await getPool();
+  const id = await tenantId(pool);
+  const current = await getTenantSubscription();
+
+  const nextSubscription: TenantSubscription = {
+    ...current,
+    planKey: input.planKey || current.planKey,
+    planName: input.planName || current.planName,
+    billingInterval: input.billingInterval || current.billingInterval,
+    status: input.status || current.status,
+    seatLimit: input.seatLimit ?? current.seatLimit,
+    pricePerPeriod: input.pricePerPeriod ?? current.pricePerPeriod,
+    currency: input.currency || current.currency,
+    currentPeriodStart: input.currentPeriodStart || current.currentPeriodStart,
+    currentPeriodEnd: input.currentPeriodEnd || current.currentPeriodEnd,
+    trialEndsAt: input.trialEndsAt === undefined ? current.trialEndsAt : input.trialEndsAt,
+    cancelAtPeriodEnd: input.cancelAtPeriodEnd ?? current.cancelAtPeriodEnd
+  };
+
+  await pool.query(
+    `
+      UPDATE tenant_subscriptions
+      SET
+        plan_key = $2,
+        plan_name = $3,
+        billing_interval = $4,
+        status = $5,
+        seat_limit = $6,
+        price_per_period = $7,
+        currency = $8,
+        current_period_start = $9,
+        current_period_end = $10,
+        trial_ends_at = $11,
+        cancel_at_period_end = $12,
+        updated_at = NOW()
+      WHERE tenant_id = $1
+    `,
+    [
+      id,
+      nextSubscription.planKey,
+      nextSubscription.planName,
+      nextSubscription.billingInterval,
+      nextSubscription.status,
+      nextSubscription.seatLimit,
+      nextSubscription.pricePerPeriod,
+      nextSubscription.currency,
+      nextSubscription.currentPeriodStart,
+      nextSubscription.currentPeriodEnd,
+      nextSubscription.trialEndsAt,
+      nextSubscription.cancelAtPeriodEnd
+    ]
+  );
+
+  return getTenantSubscription();
+}
+
+export async function listBillingInvoices(): Promise<BillingInvoice[]> {
+  const pool = await getPool();
+  const id = await tenantId(pool);
+  const result = await pool.query<BillingInvoice>(
+    `
+      SELECT
+        id::text AS id,
+        subscription_id::text AS "subscriptionId",
+        invoice_number AS "invoiceNumber",
+        period_label AS "periodLabel",
+        issued_at::text AS "issuedAt",
+        due_at::text AS "dueAt",
+        status,
+        amount_due::text AS "amountDue",
+        amount_paid::text AS "amountPaid",
+        balance_due::text AS "balanceDue",
+        notes
+      FROM billing_invoices
+      WHERE tenant_id = $1
+      ORDER BY issued_at DESC
+    `,
+    [id]
+  );
+
+  return result.rows.map((row) => ({
+    ...row,
+    amountDue: Number(row.amountDue || '0'),
+    amountPaid: Number(row.amountPaid || '0'),
+    balanceDue: Number(row.balanceDue || '0')
+  }));
+}
+
+export async function markBillingInvoicePaid(invoiceId: string, actorEmail: string) {
+  const pool = await getPool();
+  const tenant = await tenantId(pool);
+  const actorResult = await pool.query<{ id: string }>('SELECT id::text AS id FROM users WHERE email = $1', [
+    actorEmail.trim().toLowerCase()
+  ]);
+  if (!actorResult.rows[0]?.id) {
+    throw new Error(`Unable to resolve billing actor ${actorEmail}.`);
+  }
+
+  const current = await pool.query<{ status: string }>(
+    'SELECT status FROM billing_invoices WHERE tenant_id = $1 AND id = $2',
+    [tenant, invoiceId]
+  );
+  const currentStatus = current.rows[0]?.status;
+  if (!currentStatus) {
+    throw new Error('Billing invoice not found.');
+  }
+  if (currentStatus === 'paid') {
+    throw new Error('Billing invoice is already paid.');
+  }
+
+  await pool.query(
+    `
+      UPDATE billing_invoices
+      SET
+        status = 'paid',
+        amount_paid = amount_due,
+        balance_due = 0,
+        updated_at = NOW()
+      WHERE tenant_id = $1 AND id = $2
+    `,
+    [tenant, invoiceId]
+  );
+
+  const invoices = await listBillingInvoices();
+  const updated = invoices.find((invoice) => invoice.id === invoiceId);
+  if (!updated) {
+    throw new Error('Unable to reload paid invoice.');
+  }
+  return updated;
 }

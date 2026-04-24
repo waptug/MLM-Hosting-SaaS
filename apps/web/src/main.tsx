@@ -229,6 +229,36 @@ type CommissionSnapshot = {
   notes: string;
 };
 
+type TenantSubscription = {
+  id: string;
+  tenantId: string;
+  planKey: string;
+  planName: string;
+  billingInterval: 'monthly' | 'annual';
+  status: 'trialing' | 'active' | 'past_due' | 'canceled';
+  seatLimit: number;
+  pricePerPeriod: number;
+  currency: string;
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
+  trialEndsAt: string | null;
+  cancelAtPeriodEnd: boolean;
+};
+
+type BillingInvoice = {
+  id: string;
+  subscriptionId: string;
+  invoiceNumber: string;
+  periodLabel: string;
+  issuedAt: string;
+  dueAt: string;
+  status: 'draft' | 'open' | 'paid' | 'void';
+  amountDue: number;
+  amountPaid: number;
+  balanceDue: number;
+  notes: string;
+};
+
 type AuditLogEntry = {
   id: string;
   actorEmail: string;
@@ -382,7 +412,7 @@ const manualSections: ManualSection[] = [
     items: [
       'Tenant onboarding, tenant users, and the business domain are PostgreSQL-backed for the demo tenant.',
       'Password login, invitation acceptance, and session cookies are now active for the local demo tenant.',
-      'Email delivery, password reset, billing, and payout approvals are still pending production work.',
+      'Email delivery, password reset, and payout approvals are still pending production work.',
       'Audit logging now captures key admin create actions and setup updates.',
       'For the current local environment, the app expects DATABASE_URL to point at the Postgres container.'
     ]
@@ -430,17 +460,7 @@ const productionTodoGroups: TodoGroup[] = [
     ]
   },
   {
-    title: '5. Billing and subscriptions',
-    items: [
-      'charge tenants for using the SaaS',
-      'subscription plans',
-      'invoices',
-      'failed payment handling',
-      'account suspension and reactivation rules'
-    ]
-  },
-  {
-    title: '6. Security and compliance',
+    title: '5. Security and compliance',
     items: [
       'CSRF protection',
       'stronger session management',
@@ -451,7 +471,7 @@ const productionTodoGroups: TodoGroup[] = [
     ]
   },
   {
-    title: '7. Testing depth',
+    title: '6. Testing depth',
     items: [
       'broader API integration coverage',
       'UI and browser tests for login, invitations, and payouts',
@@ -460,7 +480,7 @@ const productionTodoGroups: TodoGroup[] = [
     ]
   },
   {
-    title: '8. Operations and deployment',
+    title: '7. Operations and deployment',
     items: [
       'production deployment config',
       'CI/CD',
@@ -471,14 +491,14 @@ const productionTodoGroups: TodoGroup[] = [
     ]
   },
   {
-    title: '9. Data model maturity',
+    title: '8. Data model maturity',
     items: [
       'password reset tokens',
       'email delivery logs'
     ]
   },
   {
-    title: '10. Product polish',
+    title: '9. Product polish',
     items: [
       'pagination, filtering, and search on admin screens',
       'better finance workflow UX'
@@ -490,7 +510,6 @@ const productionLaunchOrder = [
   'Password reset and invitation delivery',
   'Commission plan and rule tables',
   'Payout line items and stronger payout workflow',
-  'Billing and subscriptions',
   'Deployment, monitoring, and CI/CD',
   'Browser test coverage'
 ];
@@ -1848,6 +1867,239 @@ function CommissionsPanel({
   );
 }
 
+function BillingPanel({
+  subscription,
+  invoices,
+  onSubscriptionSaved,
+  onInvoicePaid
+}: {
+  subscription: TenantSubscription;
+  invoices: BillingInvoice[];
+  onSubscriptionSaved: (subscription: TenantSubscription) => void;
+  onInvoicePaid: (invoice: BillingInvoice) => void;
+}) {
+  const [form, setForm] = React.useState({
+    planKey: subscription.planKey,
+    planName: subscription.planName,
+    billingInterval: subscription.billingInterval,
+    status: subscription.status,
+    seatLimit: String(subscription.seatLimit),
+    pricePerPeriod: String(subscription.pricePerPeriod),
+    currency: subscription.currency,
+    currentPeriodStart: subscription.currentPeriodStart,
+    currentPeriodEnd: subscription.currentPeriodEnd,
+    trialEndsAt: subscription.trialEndsAt || '',
+    cancelAtPeriodEnd: subscription.cancelAtPeriodEnd
+  });
+  const [saving, setSaving] = React.useState(false);
+  const [invoiceSavingId, setInvoiceSavingId] = React.useState('');
+  const [error, setError] = React.useState('');
+
+  React.useEffect(() => {
+    setForm({
+      planKey: subscription.planKey,
+      planName: subscription.planName,
+      billingInterval: subscription.billingInterval,
+      status: subscription.status,
+      seatLimit: String(subscription.seatLimit),
+      pricePerPeriod: String(subscription.pricePerPeriod),
+      currency: subscription.currency,
+      currentPeriodStart: subscription.currentPeriodStart,
+      currentPeriodEnd: subscription.currentPeriodEnd,
+      trialEndsAt: subscription.trialEndsAt || '',
+      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd
+    });
+  }, [subscription]);
+
+  function setField(field: keyof typeof form, value: string | boolean) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+
+    const response = await fetch('/api/admin/billing/subscription', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...form,
+        seatLimit: Number(form.seatLimit || '0'),
+        pricePerPeriod: Number(form.pricePerPeriod || '0'),
+        trialEndsAt: form.trialEndsAt || null
+      })
+    });
+    const payload = await response.json();
+    setSaving(false);
+
+    if (!response.ok) {
+      setError(payload.error || 'Unable to save billing subscription.');
+      return;
+    }
+
+    onSubscriptionSaved(payload.subscription);
+  }
+
+  async function payInvoice(invoiceId: string) {
+    setInvoiceSavingId(invoiceId);
+    setError('');
+
+    const response = await fetch(`/api/admin/billing/invoices/${invoiceId}/pay`, {
+      method: 'POST'
+    });
+    const payload = await response.json();
+    setInvoiceSavingId('');
+
+    if (!response.ok) {
+      setError(payload.error || 'Unable to mark invoice paid.');
+      return;
+    }
+
+    onInvoicePaid(payload.invoice);
+  }
+
+  return (
+    <section className="content-grid">
+      <article className="panel">
+        <div className="panel-heading">
+          <h2>Subscription</h2>
+          <p>Tenant billing state for SaaS access and seat limits.</p>
+        </div>
+        <div className="user-list">
+          <div className="user-row">
+            <div>
+              <strong>
+                {subscription.planName} · {subscription.billingInterval}
+              </strong>
+              <p>
+                {subscription.status} · {subscription.seatLimit} seats · ${subscription.pricePerPeriod.toFixed(2)}
+              </p>
+              <p>
+                period {subscription.currentPeriodStart} to {subscription.currentPeriodEnd}
+              </p>
+            </div>
+            <span className={`status-pill ${subscription.status === 'active' ? 'done' : subscription.status === 'trialing' ? 'active' : 'next'}`}>
+              {subscription.cancelAtPeriodEnd ? 'cancels at end' : subscription.status}
+            </span>
+          </div>
+        </div>
+      </article>
+
+      <article className="panel">
+        <div className="panel-heading">
+          <h2>Edit Subscription</h2>
+          <p>Manage the tenant plan, billing cadence, and seat limits.</p>
+        </div>
+        <form className="form-grid onboarding-form" onSubmit={submit}>
+          <label>
+            Plan key
+            <input value={form.planKey} onChange={(event) => setField('planKey', event.target.value)} />
+          </label>
+          <label>
+            Plan name
+            <input value={form.planName} onChange={(event) => setField('planName', event.target.value)} />
+          </label>
+          <label>
+            Billing interval
+            <select value={form.billingInterval} onChange={(event) => setField('billingInterval', event.target.value)}>
+              <option value="monthly">monthly</option>
+              <option value="annual">annual</option>
+            </select>
+          </label>
+          <label>
+            Status
+            <select value={form.status} onChange={(event) => setField('status', event.target.value)}>
+              <option value="trialing">trialing</option>
+              <option value="active">active</option>
+              <option value="past_due">past_due</option>
+              <option value="canceled">canceled</option>
+            </select>
+          </label>
+          <label>
+            Seat limit
+            <input value={form.seatLimit} onChange={(event) => setField('seatLimit', event.target.value)} />
+          </label>
+          <label>
+            Price per period
+            <input value={form.pricePerPeriod} onChange={(event) => setField('pricePerPeriod', event.target.value)} />
+          </label>
+          <label>
+            Currency
+            <input value={form.currency} onChange={(event) => setField('currency', event.target.value)} />
+          </label>
+          <label>
+            Current period start
+            <input value={form.currentPeriodStart} onChange={(event) => setField('currentPeriodStart', event.target.value)} />
+          </label>
+          <label>
+            Current period end
+            <input value={form.currentPeriodEnd} onChange={(event) => setField('currentPeriodEnd', event.target.value)} />
+          </label>
+          <label>
+            Trial ends at
+            <input value={form.trialEndsAt} onChange={(event) => setField('trialEndsAt', event.target.value)} />
+          </label>
+          <label>
+            Cancel at period end
+            <select
+              value={form.cancelAtPeriodEnd ? 'true' : 'false'}
+              onChange={(event) => setField('cancelAtPeriodEnd', event.target.value === 'true')}
+            >
+              <option value="false">false</option>
+              <option value="true">true</option>
+            </select>
+          </label>
+          {error ? <p className="error full-width">{error}</p> : null}
+          <div className="form-actions full-width">
+            <button type="submit" className="primary" disabled={saving}>
+              {saving ? 'Saving' : 'Save subscription'}
+            </button>
+          </div>
+        </form>
+      </article>
+
+      <article className="panel">
+        <div className="panel-heading">
+          <h2>Invoices</h2>
+          <p>Invoice history for the tenant subscription.</p>
+        </div>
+        <div className="user-list">
+          {invoices.map((invoice) => (
+            <div className="user-row" key={invoice.id}>
+              <div>
+                <strong>
+                  {invoice.invoiceNumber} · {invoice.periodLabel}
+                </strong>
+                <p>
+                  issued {invoice.issuedAt} · due {invoice.dueAt} · paid ${invoice.amountPaid.toFixed(2)} / $
+                  {invoice.amountDue.toFixed(2)}
+                </p>
+                <p>{invoice.notes}</p>
+              </div>
+              <div className="batch-actions">
+                <span className={`status-pill ${invoice.status === 'paid' ? 'done' : invoice.status === 'open' ? 'active' : 'next'}`}>
+                  ${invoice.balanceDue.toFixed(2)}
+                </span>
+                {invoice.status !== 'paid' ? (
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={invoiceSavingId === invoice.id}
+                    onClick={() => payInvoice(invoice.id)}
+                  >
+                    {invoiceSavingId === invoice.id ? 'Saving' : 'Mark paid'}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      </article>
+    </section>
+  );
+}
+
 function ManualPanel() {
   const [manualView, setManualView] = React.useState<'guide' | 'production'>('guide');
 
@@ -2235,7 +2487,9 @@ function AuthPanel({
 }
 
 function App() {
-  const [screen, setScreen] = React.useState<'overview' | 'onboarding' | 'users' | 'invitations' | 'sales-groups' | 'members' | 'customers' | 'orders' | 'commissions' | 'audit' | 'manual'>('overview');
+  const [screen, setScreen] = React.useState<
+    'overview' | 'onboarding' | 'users' | 'invitations' | 'sales-groups' | 'members' | 'customers' | 'orders' | 'commissions' | 'billing' | 'audit' | 'manual'
+  >('overview');
   const [session, setSession] = React.useState<SessionPayload | null>(null);
   const [setup, setSetup] = React.useState<TenantSetup | null>(null);
   const [demoCredentials, setDemoCredentials] = React.useState<DemoCredentials | null>(null);
@@ -2254,6 +2508,8 @@ function App() {
   const [commissionSnapshots, setCommissionSnapshots] = React.useState<CommissionSnapshot[]>([]);
   const [commissionPlans, setCommissionPlans] = React.useState<CommissionPlanVersion[]>([]);
   const [commissionRules, setCommissionRules] = React.useState<CommissionRule[]>([]);
+  const [billingSubscription, setBillingSubscription] = React.useState<TenantSubscription | null>(null);
+  const [billingInvoices, setBillingInvoices] = React.useState<BillingInvoice[]>([]);
   const [auditLogs, setAuditLogs] = React.useState<AuditLogEntry[]>([]);
 
   async function fetchSessionOnly() {
@@ -2311,6 +2567,8 @@ function App() {
       setCommissionSnapshots([]);
       setCommissionPlans([]);
       setCommissionRules([]);
+      setBillingSubscription(null);
+      setBillingInvoices([]);
       setAuditLogs([]);
       setDeliveryLogs([]);
       return;
@@ -2330,6 +2588,7 @@ function App() {
       payoutsResponse,
       payoutItemsResponse,
       commissionSnapshotsResponse,
+      billingResponse,
       plansResponse,
       auditLogsResponse,
       deliveryLogsResponse
@@ -2347,6 +2606,7 @@ function App() {
       fetch('/api/admin/payouts'),
       fetch('/api/admin/payout-items'),
       fetch('/api/admin/commission-snapshots'),
+      fetch('/api/admin/billing'),
       fetch('/api/admin/commission-plans'),
       fetch('/api/admin/audit-logs'),
       fetch('/api/admin/email-delivery-logs')
@@ -2365,6 +2625,7 @@ function App() {
       payoutsPayload,
       payoutItemsPayload,
       commissionSnapshotsPayload,
+      billingPayload,
       plansPayload,
       auditLogsPayload,
       deliveryLogsPayload
@@ -2382,6 +2643,7 @@ function App() {
       payoutsResponse.json(),
       payoutItemsResponse.json(),
       commissionSnapshotsResponse.json(),
+      billingResponse.json(),
       plansResponse.json(),
       auditLogsResponse.json(),
       deliveryLogsResponse.json()
@@ -2399,6 +2661,8 @@ function App() {
     setPayoutBatches(payoutsPayload.batches);
     setPayoutItems(payoutItemsPayload.items);
     setCommissionSnapshots(commissionSnapshotsPayload.snapshots);
+    setBillingSubscription(billingPayload.subscription);
+    setBillingInvoices(billingPayload.invoices);
     setCommissionPlans(plansPayload.plans);
     setCommissionRules(plansPayload.rules);
     setAuditLogs(auditLogsPayload.entries);
@@ -2510,6 +2774,10 @@ function App() {
         <button className={screen === 'commissions' ? 'active' : ''} onClick={() => setScreen('commissions')}>
           <BadgeDollarSign size={16} />
           Commissions
+        </button>
+        <button className={screen === 'billing' ? 'active' : ''} onClick={() => setScreen('billing')}>
+          <Settings2 size={16} />
+          Billing
         </button>
         <button className={screen === 'audit' ? 'active' : ''} onClick={() => setScreen('audit')}>
           <ScrollText size={16} />
@@ -2655,6 +2923,20 @@ function App() {
           rules={commissionRules}
           onBatchUpdated={(batch) => {
             setPayoutBatches((current) => current.map((entry) => (entry.id === batch.id ? batch : entry)));
+            reloadAuditLogs().catch(() => undefined);
+          }}
+        />
+      ) : null}
+      {session && screen === 'billing' && billingSubscription ? (
+        <BillingPanel
+          subscription={billingSubscription}
+          invoices={billingInvoices}
+          onSubscriptionSaved={(subscription) => {
+            setBillingSubscription(subscription);
+            reloadAuditLogs().catch(() => undefined);
+          }}
+          onInvoicePaid={(invoice) => {
+            setBillingInvoices((current) => current.map((entry) => (entry.id === invoice.id ? invoice : entry)));
             reloadAuditLogs().catch(() => undefined);
           }}
         />

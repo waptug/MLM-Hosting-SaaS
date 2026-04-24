@@ -26,7 +26,10 @@ let createdSalesGroupId = null;
 let createdInvitationId = null;
 let createdAcceptedUserEmail = null;
 let payoutBatchStateResetNeeded = false;
+let billingInvoiceStateResetNeeded = false;
+let billingSubscriptionCancelResetNeeded = false;
 const payoutBatchId = '00000000-0000-0000-0000-000000000601';
+const billingInvoiceId = '00000000-0000-0000-0000-000000000811';
 const uniqueSuffix = randomUUID().slice(0, 8).toUpperCase();
 let sessionCookie = '';
 let invitedSessionCookie = '';
@@ -148,6 +151,51 @@ try {
       commissionSnapshots.body.snapshots.some((snapshot) => snapshot.batchId === payoutBatchId && snapshot.totalCommission > 0),
     'Commission snapshot list did not return seeded history.'
   );
+
+  const billing = await invoke('GET', '/api/admin/billing', {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(billing.status === 200, 'Billing summary request failed.');
+  assert(
+    billing.body?.subscription?.planKey === 'growth' &&
+      Array.isArray(billing.body?.invoices) &&
+      billing.body.invoices.some((invoice) => invoice.invoiceNumber === 'INV-2026-004' && invoice.status === 'open'),
+    'Billing summary did not return seeded subscription and invoice data.'
+  );
+
+  const updateBilling = await invoke('PUT', '/api/admin/billing/subscription', {
+    headers: {
+      'content-type': 'application/json',
+      cookie: sessionCookie
+    },
+    body: {
+      planKey: 'growth',
+      planName: 'Growth Partner',
+      billingInterval: 'monthly',
+      status: 'active',
+      seatLimit: 30,
+      pricePerPeriod: 149,
+      currency: 'USD',
+      currentPeriodStart: '2026-04-01',
+      currentPeriodEnd: '2026-04-30',
+      trialEndsAt: null,
+      cancelAtPeriodEnd: true
+    }
+  });
+  assert(updateBilling.status === 200, 'Billing subscription update failed.');
+  billingSubscriptionCancelResetNeeded = true;
+  assert(updateBilling.body?.subscription?.cancelAtPeriodEnd === true, 'Billing subscription cancel flag did not update.');
+
+  const payInvoice = await invoke('POST', `/api/admin/billing/invoices/${billingInvoiceId}/pay`, {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(payInvoice.status === 200, 'Billing invoice payment failed.');
+  billingInvoiceStateResetNeeded = true;
+  assert(payInvoice.body?.invoice?.status === 'paid', 'Billing invoice did not move to paid.');
 
   const forbiddenTenantUsers = await invoke('GET', '/api/admin/tenant-users', {
     headers: {
@@ -418,6 +466,7 @@ try {
           'commission plan list',
           'payout item list',
           'commission snapshot list',
+          'billing summary and invoice pay',
           'password login and cookie session',
           'tenant user role denial',
           'sales group create and list',
@@ -451,6 +500,37 @@ try {
       [payoutBatchId]
     );
     await pool.query('DELETE FROM audit_logs WHERE entity_type = $1 AND entity_id = $2', ['payout_batch', payoutBatchId]);
+  }
+
+  if (billingInvoiceStateResetNeeded) {
+    await pool.query(
+      `
+        UPDATE billing_invoices
+        SET
+          status = 'open',
+          amount_paid = 0,
+          balance_due = amount_due,
+          updated_at = NOW()
+        WHERE id = $1
+      `,
+      [billingInvoiceId]
+    );
+    await pool.query('DELETE FROM audit_logs WHERE entity_type = $1 AND entity_id = $2', ['billing_invoice', billingInvoiceId]);
+  }
+
+  if (billingSubscriptionCancelResetNeeded) {
+    await pool.query(
+      `
+        UPDATE tenant_subscriptions
+        SET cancel_at_period_end = FALSE, updated_at = NOW()
+        WHERE id = $1
+      `,
+      ['00000000-0000-0000-0000-000000000801']
+    );
+    await pool.query('DELETE FROM audit_logs WHERE entity_type = $1 AND action_key = $2', [
+      'tenant_subscription',
+      'billing.subscription.updated'
+    ]);
   }
 
   if (passwordResetTokenForOwner) {

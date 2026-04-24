@@ -45,6 +45,8 @@ Current starter migration:
 - [0017_demo_payout_items.sql](./0017_demo_payout_items.sql)
 - [0018_commission_snapshots.sql](./0018_commission_snapshots.sql)
 - [0019_demo_commission_snapshots.sql](./0019_demo_commission_snapshots.sql)
+- [0020_tenant_subscriptions.sql](./0020_tenant_subscriptions.sql)
+- [0021_demo_tenant_subscription.sql](./0021_demo_tenant_subscription.sql)
 
 Core entity coverage now includes:
 
@@ -63,6 +65,8 @@ Core entity coverage now includes:
 - `commission_rules`
 - `payout_items`
 - `commission_snapshots`
+- `tenant_subscriptions`
+- `billing_invoices`
 
 Current runtime note:
 

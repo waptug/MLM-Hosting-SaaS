@@ -19,17 +19,21 @@ import { businessRepository, businessRepositoryMode } from './repository-provide
 import {
   addTenantUser,
   createTenantInvitation,
+  getBillingSubscription,
   getTenantSetup,
   listCommissionPlans,
   listCommissionRules,
   listCommissionSnapshots,
   listAuditLogs,
   listEmailDeliveryLogs,
+  listBillingInvoiceRecords,
   listPayoutItems,
   listTenantInvitations,
   listTenantUsers,
+  markInvoicePaid,
   recordEmailDelivery,
   recordAuditLog,
+  updateBillingSubscription,
   updateTenantSetup
 } from './state.js';
 
@@ -819,6 +823,85 @@ app.get(
   requireRole(['tenant_owner', 'tenant_manager', 'finance_manager']),
   async (_req, res) => {
     res.json({ snapshots: await listCommissionSnapshots() });
+  }
+);
+
+app.get(
+  '/api/admin/billing',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'finance_manager']),
+  async (_req, res) => {
+    res.json({
+      subscription: await getBillingSubscription(),
+      invoices: await listBillingInvoiceRecords()
+    });
+  }
+);
+
+app.put(
+  '/api/admin/billing/subscription',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'finance_manager']),
+  async (req, res) => {
+    const body = req.body || {};
+    const subscription = await updateBillingSubscription({
+      planKey: String(body.planKey || '').trim() || undefined,
+      planName: String(body.planName || '').trim() || undefined,
+      billingInterval: body.billingInterval === 'annual' ? 'annual' : 'monthly',
+      status: ['trialing', 'active', 'past_due', 'canceled'].includes(String(body.status || ''))
+        ? (body.status as 'trialing' | 'active' | 'past_due' | 'canceled')
+        : undefined,
+      seatLimit: Number.isFinite(Number(body.seatLimit)) ? Math.max(1, Number(body.seatLimit)) : undefined,
+      pricePerPeriod: Number.isFinite(Number(body.pricePerPeriod)) ? Math.max(0, Number(body.pricePerPeriod)) : undefined,
+      currency: String(body.currency || '').trim() || undefined,
+      currentPeriodStart: String(body.currentPeriodStart || '').trim() || undefined,
+      currentPeriodEnd: String(body.currentPeriodEnd || '').trim() || undefined,
+      trialEndsAt: body.trialEndsAt ? String(body.trialEndsAt).trim() : null,
+      cancelAtPeriodEnd: Boolean(body.cancelAtPeriodEnd)
+    });
+
+    await recordAuditLog({
+      actorEmail: req.tenantContext?.user.email,
+      actionKey: 'billing.subscription.updated',
+      entityType: 'tenant_subscription',
+      entityId: subscription.id,
+      summary: `Updated billing subscription to ${subscription.planName}.`,
+      details: {
+        status: subscription.status,
+        billingInterval: subscription.billingInterval,
+        pricePerPeriod: subscription.pricePerPeriod
+      }
+    });
+
+    res.json({ subscription });
+  }
+);
+
+app.post(
+  '/api/admin/billing/invoices/:id/pay',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'finance_manager']),
+  async (req, res) => {
+    const invoiceId = String(req.params.id || '').trim();
+    try {
+      const invoice = await markInvoicePaid(invoiceId, req.tenantContext!.user.email);
+      await recordAuditLog({
+        actorEmail: req.tenantContext?.user.email,
+        actionKey: 'billing.invoice.paid',
+        entityType: 'billing_invoice',
+        entityId: invoice.id,
+        summary: `Marked billing invoice ${invoice.invoiceNumber} paid.`,
+        details: {
+          status: invoice.status,
+          amountDue: invoice.amountDue
+        }
+      });
+      res.json({ invoice });
+    } catch (error) {
+      res.status(400).json({
+        error: error instanceof Error ? error.message : 'Unable to mark invoice paid.'
+      });
+    }
   }
 );
 
