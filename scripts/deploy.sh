@@ -16,7 +16,7 @@ fi
 
 DEPLOY_SSH_PORT="${DEPLOY_SSH_PORT:-22}"
 DEPLOY_SSH_PASSWORD="${DEPLOY_SSH_PASSWORD:-}"
-DEPLOY_PUBLIC_DIR="${DEPLOY_PUBLIC_DIR:-/home/www}"
+DEPLOY_PUBLIC_DIR="${DEPLOY_PUBLIC_DIR:-/home/geekzoneai/www}"
 DEPLOY_GIT_BRANCH="${DEPLOY_GIT_BRANCH:-main}"
 DEPLOY_AUTO_COMMIT="${DEPLOY_AUTO_COMMIT:-1}"
 DEPLOY_COMMIT_PREFIX="${DEPLOY_COMMIT_PREFIX:-Deploy}"
@@ -34,7 +34,6 @@ remote_target="${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}"
 mkdir -p "$ROOT_DIR/.deploy"
 
 SSH_ARGS=(-p "$DEPLOY_SSH_PORT" -o StrictHostKeyChecking=accept-new)
-RSYNC_SSH_CMD="ssh -o StrictHostKeyChecking=accept-new -p $DEPLOY_SSH_PORT"
 
 temp_askpass=""
 cleanup() {
@@ -53,9 +52,8 @@ if [[ -n "$DEPLOY_SSH_PASSWORD" ]]; then
 printf '%s\n' "${DEPLOY_SSH_PASSWORD:?}"
 EOF
     chmod 700 "$temp_askpass"
-    RSYNC_SSH_CMD="env DISPLAY=none SSH_ASKPASS=$temp_askpass SSH_ASKPASS_REQUIRE=force setsid -w ssh -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password -o PubkeyAuthentication=no -p $DEPLOY_SSH_PORT"
   else
-    RSYNC_SSH_CMD="sshpass -p '$DEPLOY_SSH_PASSWORD' ssh -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password -o PubkeyAuthentication=no -p $DEPLOY_SSH_PORT"
+    :
   fi
 fi
 
@@ -90,41 +88,25 @@ fi
 echo "Pushing to GitHub..."
 git push origin "$DEPLOY_GIT_BRANCH"
 
-echo "Syncing release bundle to ${remote_target}:${DEPLOY_REMOTE_DIR}"
-if [[ -n "$DEPLOY_SSH_PASSWORD" ]]; then
-  env DISPLAY=none SSH_ASKPASS="$temp_askpass" SSH_ASKPASS_REQUIRE=force setsid -w ssh "${SSH_ARGS[@]}" "$remote_target" "mkdir -p '$DEPLOY_REMOTE_DIR'"
-  rsync -az --delete -e "$RSYNC_SSH_CMD" "$release_dir/" "$remote_target:$DEPLOY_REMOTE_DIR/"
-else
-  ssh -p "$DEPLOY_SSH_PORT" "$remote_target" "mkdir -p '$DEPLOY_REMOTE_DIR'"
-  rsync -az --delete -e "ssh -p $DEPLOY_SSH_PORT" "$release_dir/" "$remote_target:$DEPLOY_REMOTE_DIR/"
-fi
-
-echo "Syncing built web artifact to ${remote_target}:${DEPLOY_PUBLIC_DIR}"
-if [[ -n "$DEPLOY_SSH_PASSWORD" ]]; then
-  env DISPLAY=none SSH_ASKPASS="$temp_askpass" SSH_ASKPASS_REQUIRE=force setsid -w ssh "${SSH_ARGS[@]}" "$remote_target" "mkdir -p '$DEPLOY_PUBLIC_DIR'"
-  rsync -az --delete -e "$RSYNC_SSH_CMD" "$ROOT_DIR/apps/web/dist/" "$remote_target:$DEPLOY_PUBLIC_DIR/"
-else
-  ssh -p "$DEPLOY_SSH_PORT" "$remote_target" "mkdir -p '$DEPLOY_PUBLIC_DIR'"
-  rsync -az --delete -e "ssh -p $DEPLOY_SSH_PORT" "$ROOT_DIR/apps/web/dist/" "$remote_target:$DEPLOY_PUBLIC_DIR/"
-fi
+remote_command="mkdir -p '$DEPLOY_REMOTE_DIR' '$DEPLOY_PUBLIC_DIR' && tar -xpf - -C '$DEPLOY_REMOTE_DIR' && cd '$DEPLOY_REMOTE_DIR' && "
+publish_command="rm -rf '$DEPLOY_PUBLIC_DIR'/* && cp -a '$DEPLOY_REMOTE_DIR/apps/web/dist/.' '$DEPLOY_PUBLIC_DIR/'"
 
 if [[ -n "$DEPLOY_REMOTE_POST_SYNC" ]]; then
   echo "Running remote post-sync command..."
-  if [[ -n "$DEPLOY_SSH_PASSWORD" ]]; then
-    env DISPLAY=none SSH_ASKPASS="$temp_askpass" SSH_ASKPASS_REQUIRE=force setsid -w ssh "${SSH_ARGS[@]}" "$remote_target" "cd '$DEPLOY_REMOTE_DIR' && $DEPLOY_REMOTE_POST_SYNC"
-  else
-    ssh -p "$DEPLOY_SSH_PORT" "$remote_target" "cd '$DEPLOY_REMOTE_DIR' && $DEPLOY_REMOTE_POST_SYNC"
-  fi
+  remote_command+=" $DEPLOY_REMOTE_POST_SYNC && $publish_command"
 elif [[ -n "$DEPLOY_REMOTE_DB_URL" && -n "$DEPLOY_REMOTE_SESSION_SECRET" ]]; then
   echo "Running default remote post-sync command..."
-  remote_post_sync_cmd="DATABASE_URL='${DEPLOY_REMOTE_DB_URL}' SESSION_SECRET='${DEPLOY_REMOTE_SESSION_SECRET}' TRUSTED_ORIGINS='${DEPLOY_REMOTE_WEB_ORIGIN},${DEPLOY_REMOTE_API_ORIGIN}' WEB_PORT='80' PORT='${DEPLOY_REMOTE_API_PORT}' npm run db:migrate && (pkill -f 'npm run start:api' || true; nohup env DATABASE_URL='${DEPLOY_REMOTE_DB_URL}' SESSION_SECRET='${DEPLOY_REMOTE_SESSION_SECRET}' TRUSTED_ORIGINS='${DEPLOY_REMOTE_WEB_ORIGIN},${DEPLOY_REMOTE_API_ORIGIN}' WEB_PORT='80' PORT='${DEPLOY_REMOTE_API_PORT}' npm run start:api >/tmp/mlm-hosting-saas-api.log 2>&1 &)"
-  if [[ -n "$DEPLOY_SSH_PASSWORD" ]]; then
-    env DISPLAY=none SSH_ASKPASS="$temp_askpass" SSH_ASKPASS_REQUIRE=force setsid -w ssh "${SSH_ARGS[@]}" "$remote_target" "cd '$DEPLOY_REMOTE_DIR' && $remote_post_sync_cmd"
-  else
-    ssh -p "$DEPLOY_SSH_PORT" "$remote_target" "cd '$DEPLOY_REMOTE_DIR' && $remote_post_sync_cmd"
-  fi
+  remote_command+="DATABASE_URL='${DEPLOY_REMOTE_DB_URL}' SESSION_SECRET='${DEPLOY_REMOTE_SESSION_SECRET}' TRUSTED_ORIGINS='${DEPLOY_REMOTE_WEB_ORIGIN},${DEPLOY_REMOTE_API_ORIGIN}' WEB_PORT='80' PORT='${DEPLOY_REMOTE_API_PORT}' npm run db:migrate && (pkill -f 'npm run start:api' || true; nohup env DATABASE_URL='${DEPLOY_REMOTE_DB_URL}' SESSION_SECRET='${DEPLOY_REMOTE_SESSION_SECRET}' TRUSTED_ORIGINS='${DEPLOY_REMOTE_WEB_ORIGIN},${DEPLOY_REMOTE_API_ORIGIN}' WEB_PORT='80' PORT='${DEPLOY_REMOTE_API_PORT}' npm run start:api >/tmp/mlm-hosting-saas-api.log 2>&1 &) && $publish_command"
 else
   echo "Skipping remote post-sync because DEPLOY_REMOTE_POST_SYNC is empty and remote DB/session values are not set."
+  remote_command+="$publish_command"
+fi
+
+echo "Syncing release bundle and publishing web artifact on ${remote_target}"
+if [[ -n "$DEPLOY_SSH_PASSWORD" ]]; then
+  tar -cpf - -C "$release_dir" . | env DISPLAY=none SSH_ASKPASS="$temp_askpass" SSH_ASKPASS_REQUIRE=force setsid -w ssh -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password -o PubkeyAuthentication=no "${SSH_ARGS[@]}" "$remote_target" "$remote_command"
+else
+  tar -cpf - -C "$release_dir" . | ssh -p "$DEPLOY_SSH_PORT" "$remote_target" "$remote_command"
 fi
 
 echo "Deployment complete."
