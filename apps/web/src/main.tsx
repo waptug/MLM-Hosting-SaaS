@@ -182,6 +182,11 @@ type ManualSection = {
   items: string[];
 };
 
+type TodoGroup = {
+  title: string;
+  items: string[];
+};
+
 const milestones: Milestone[] = [
   {
     title: 'Tenant foundation',
@@ -319,6 +324,112 @@ const manualSections: ManualSection[] = [
       'For the current local environment, the app expects DATABASE_URL to point at the Postgres container.'
     ]
   }
+];
+
+const productionTodoGroups: TodoGroup[] = [
+  {
+    title: '1. Real user lifecycle',
+    items: [
+      'password reset',
+      'email delivery for invitations',
+      'invite expiration and revocation UI',
+      'login rate limiting and lockout',
+      'secure cookie settings for production domains'
+    ]
+  },
+  {
+    title: '2. Commission system hardening',
+    items: [
+      'versioned commission plans',
+      'configurable multilevel rules',
+      'qualification logic by rank, volume, and group',
+      'historical commission snapshots so rule changes do not rewrite prior payouts'
+    ]
+  },
+  {
+    title: '3. Payout operations',
+    items: [
+      'payout line items, not just batch headers',
+      'reconciliation and approval history',
+      'export for accounting',
+      'void and reopen flows',
+      'bank or payment-provider integration if needed'
+    ]
+  },
+  {
+    title: '4. White-label SaaS controls',
+    items: [
+      'tenant branding upload',
+      'custom domains',
+      'branded email templates',
+      'tenant-specific plan and catalog configuration',
+      'tenant provisioning flow for new reseller accounts'
+    ]
+  },
+  {
+    title: '5. Billing and subscriptions',
+    items: [
+      'charge tenants for using the SaaS',
+      'subscription plans',
+      'invoices',
+      'failed payment handling',
+      'account suspension and reactivation rules'
+    ]
+  },
+  {
+    title: '6. Security and compliance',
+    items: [
+      'CSRF protection',
+      'stronger session management',
+      'audit coverage for all mutating actions',
+      'secrets and environment management',
+      'backup and restore',
+      'retention policy and privacy controls'
+    ]
+  },
+  {
+    title: '7. Testing depth',
+    items: [
+      'broader API integration coverage',
+      'UI and browser tests for login, invitations, and payouts',
+      'migration tests',
+      'permission matrix tests'
+    ]
+  },
+  {
+    title: '8. Operations and deployment',
+    items: [
+      'production deployment config',
+      'CI/CD',
+      'health checks and monitoring',
+      'structured logs',
+      'error reporting',
+      'staging environment'
+    ]
+  },
+  {
+    title: '9. Data model maturity',
+    items: [
+      'password reset tokens',
+      'email delivery logs'
+    ]
+  },
+  {
+    title: '10. Product polish',
+    items: [
+      'pagination, filtering, and search on admin screens',
+      'better finance workflow UX'
+    ]
+  }
+];
+
+const productionLaunchOrder = [
+  'Password reset and invitation delivery',
+  'Commission plan and rule tables',
+  'Payout line items and stronger payout workflow',
+  'Billing and subscriptions',
+  'Deployment, monitoring, and CI/CD',
+  'Browser test coverage'
 ];
 
 function StatusPill({ status }: { status: StepStatus }) {
@@ -1471,25 +1582,65 @@ function CommissionsPanel({
 }
 
 function ManualPanel() {
+  const [manualView, setManualView] = React.useState<'guide' | 'production'>('guide');
+
   return (
     <section className="panel manual-panel">
       <div className="panel-heading">
         <h2>User Manual</h2>
         <p>Operational guide for tenant admins, recruiters, sales managers, and finance users.</p>
       </div>
-      <div className="manual-grid">
-        {manualSections.map((section) => (
-          <article className="manual-section" key={section.title}>
-            <h3>{section.title}</h3>
-            <p>{section.summary}</p>
-            <ul className="manual-list">
-              {section.items.map((item) => (
+      <nav className="subtabs manual-subtabs" aria-label="Manual sections">
+        <button className={manualView === 'guide' ? 'active' : ''} onClick={() => setManualView('guide')}>
+          Guide
+        </button>
+        <button className={manualView === 'production' ? 'active' : ''} onClick={() => setManualView('production')}>
+          Production To-Do
+        </button>
+      </nav>
+      {manualView === 'guide' ? (
+        <div className="manual-grid">
+          {manualSections.map((section) => (
+            <article className="manual-section" key={section.title}>
+              <h3>{section.title}</h3>
+              <p>{section.summary}</p>
+              <ul className="manual-list">
+                {section.items.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="manual-grid">
+          <article className="manual-section manual-section-wide">
+            <h3>What Is Left To Complete For Production Site</h3>
+            <p>Running to-do list for the remaining production launch work.</p>
+            <div className="todo-groups">
+              {productionTodoGroups.map((group) => (
+                <section className="todo-group" key={group.title}>
+                  <h4>{group.title}</h4>
+                  <ul className="manual-list todo-list">
+                    {group.items.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+            </div>
+          </article>
+          <article className="manual-section">
+            <h3>Shortest Path To Production Launch</h3>
+            <p>Recommended build order from highest leverage to lowest.</p>
+            <ol className="manual-list numbered-list">
+              {productionLaunchOrder.map((item) => (
                 <li key={item}>{item}</li>
               ))}
-            </ul>
+            </ol>
           </article>
-        ))}
-      </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -308,6 +308,10 @@ select {
   margin-bottom: 20px;
 }
 
+.manual-subtabs {
+  margin-bottom: 16px;
+}
+
 .manual-grid {
   display: grid;
   gap: 14px;
@@ -322,8 +326,17 @@ select {
   padding: 16px;
 }
 
+.manual-section-wide {
+  grid-column: 1 / -1;
+}
+
 .manual-section h3 {
   font-size: 0.98rem;
+  margin: 0 0 8px;
+}
+
+.manual-section h4 {
+  font-size: 0.9rem;
   margin: 0 0 8px;
 }
 
@@ -342,6 +355,25 @@ select {
 .manual-list li {
   color: #27302c;
   line-height: 1.45;
+}
+
+.todo-groups {
+  display: grid;
+  gap: 14px;
+}
+
+.todo-group {
+  border-top: 1px solid #e1dbcf;
+  padding-top: 12px;
+}
+
+.todo-group:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.numbered-list {
+  padding-left: 22px;
 }
 
 @media (max-width: 980px) {
