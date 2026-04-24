@@ -39,6 +39,7 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ -n "$DEPLOY_SSH_PASSWORD" ]]; then
+  export DEPLOY_SSH_PASSWORD
   if ! command -v sshpass >/dev/null 2>&1; then
     temp_askpass="$(mktemp "$ROOT_DIR/.deploy/askpass.XXXXXX.sh")"
     cat >"$temp_askpass" <<'EOF'
