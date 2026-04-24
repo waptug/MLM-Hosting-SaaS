@@ -125,6 +125,18 @@ try {
     'Commission plan list did not return the seeded plan and rules.'
   );
 
+  const payoutItems = await invoke('GET', '/api/admin/payout-items', {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(payoutItems.status === 200, 'Payout item list request failed.');
+  assert(
+    Array.isArray(payoutItems.body?.items) &&
+      payoutItems.body.items.some((item) => item.batchId === payoutBatchId && item.totalAmount > 0),
+    'Payout item list did not return seeded batch line items.'
+  );
+
   const forbiddenTenantUsers = await invoke('GET', '/api/admin/tenant-users', {
     headers: {
       'x-tenant-slug': 'demo-hosting-group',
@@ -392,6 +404,7 @@ try {
           'session',
           'finance tenant context',
           'commission plan list',
+          'payout item list',
           'password login and cookie session',
           'tenant user role denial',
           'sales group create and list',

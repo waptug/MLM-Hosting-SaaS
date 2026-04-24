@@ -237,6 +237,22 @@ select {
   justify-items: end;
 }
 
+.batch-actions button {
+  background: #d7e7df;
+  border: 0;
+  border-radius: 8px;
+  color: #1d4e3b;
+  cursor: pointer;
+  font: inherit;
+  min-height: 34px;
+  padding: 0 12px;
+}
+
+.empty-state {
+  color: #5e6a64;
+  margin: 8px 0 0;
+}
+
 .user-row p {
   color: #5e6a64;
   margin: 4px 0 0;

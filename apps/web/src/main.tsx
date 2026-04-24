@@ -200,6 +200,20 @@ type PayoutBatch = {
   paidByEmail?: string;
 };
 
+type PayoutItem = {
+  id: string;
+  batchId: string;
+  payeeMemberId: string;
+  payeeMemberName: string;
+  lineLabel: string;
+  sourceSummary: string;
+  directCommission: number;
+  overrideCommission: number;
+  totalAmount: number;
+  orderCount: number;
+  notes: string;
+};
+
 type AuditLogEntry = {
   id: string;
   actorEmail: string;
@@ -1531,12 +1545,14 @@ function OrdersPanel({
 function CommissionsPanel({
   summaries,
   payouts,
+  payoutItems,
   plans,
   rules,
   onBatchUpdated
 }: {
   summaries: CommissionSummary[];
   payouts: PayoutBatch[];
+  payoutItems: PayoutItem[];
   plans: CommissionPlanVersion[];
   rules: CommissionRule[];
   onBatchUpdated: (batch: PayoutBatch) => void;
@@ -1557,6 +1573,21 @@ function CommissionsPanel({
   );
   const [savingBatchId, setSavingBatchId] = React.useState('');
   const [error, setError] = React.useState('');
+  const [selectedBatchId, setSelectedBatchId] = React.useState(payouts[0]?.id || '');
+
+  React.useEffect(() => {
+    if (!payouts.length) {
+      setSelectedBatchId('');
+      return;
+    }
+
+    if (!selectedBatchId || !payouts.some((batch) => batch.id === selectedBatchId)) {
+      setSelectedBatchId(payouts[0].id);
+    }
+  }, [payouts, selectedBatchId]);
+
+  const selectedBatch = payouts.find((batch) => batch.id === selectedBatchId) || null;
+  const selectedBatchItems = payoutItems.filter((item) => item.batchId === selectedBatchId);
 
   async function runBatchAction(batchId: string, action: 'approve' | 'pay') {
     setSavingBatchId(batchId);
@@ -1645,6 +1676,9 @@ function CommissionsPanel({
                   <span className={`status-pill ${batch.status === 'paid' ? 'done' : batch.status === 'approved' ? 'active' : 'next'}`}>
                     ${batch.totalAmount.toFixed(2)}
                   </span>
+                  <button type="button" onClick={() => setSelectedBatchId(batch.id)}>
+                    View items
+                  </button>
                   {batch.status === 'draft' ? (
                     <button
                       type="button"
@@ -1669,6 +1703,49 @@ function CommissionsPanel({
               </div>
             ))}
           </div>
+        </article>
+      </section>
+
+      <section className="content-grid">
+        <article className="panel">
+          <div className="panel-heading">
+            <h2>Batch Line Items</h2>
+            <p>Detailed commission rows for the selected payout batch.</p>
+          </div>
+          {selectedBatch ? (
+            <div className="user-list">
+              <div className="user-row">
+                <div>
+                  <strong>{selectedBatch.periodLabel}</strong>
+                  <p>
+                    {selectedBatch.payeeCount} payees · ${selectedBatch.totalAmount.toFixed(2)} total
+                  </p>
+                </div>
+                <span className={`status-pill ${selectedBatch.status === 'paid' ? 'done' : selectedBatch.status === 'approved' ? 'active' : 'next'}`}>
+                  {selectedBatch.status}
+                </span>
+              </div>
+              {selectedBatchItems.map((item) => (
+                <div className="user-row" key={item.id}>
+                  <div>
+                    <strong>{item.payeeMemberName || 'Unassigned payee'}</strong>
+                    <p>
+                      {item.lineLabel} · {item.orderCount} orders · direct ${item.directCommission.toFixed(2)} · override $
+                      {item.overrideCommission.toFixed(2)}
+                    </p>
+                    <p>
+                      {item.sourceSummary}
+                      {item.notes ? ` · ${item.notes}` : ''}
+                    </p>
+                  </div>
+                  <span className="status-pill done">${item.totalAmount.toFixed(2)}</span>
+                </div>
+              ))}
+              {!selectedBatchItems.length ? <p className="empty-state">No line items are attached to this payout batch yet.</p> : null}
+            </div>
+          ) : (
+            <p className="empty-state">Select a payout batch to view its line items.</p>
+          )}
         </article>
       </section>
 
@@ -2123,6 +2200,7 @@ function App() {
   const [orders, setOrders] = React.useState<Order[]>([]);
   const [commissionSummaries, setCommissionSummaries] = React.useState<CommissionSummary[]>([]);
   const [payoutBatches, setPayoutBatches] = React.useState<PayoutBatch[]>([]);
+  const [payoutItems, setPayoutItems] = React.useState<PayoutItem[]>([]);
   const [commissionPlans, setCommissionPlans] = React.useState<CommissionPlanVersion[]>([]);
   const [commissionRules, setCommissionRules] = React.useState<CommissionRule[]>([]);
   const [auditLogs, setAuditLogs] = React.useState<AuditLogEntry[]>([]);
@@ -2178,6 +2256,7 @@ function App() {
       setOrders([]);
       setCommissionSummaries([]);
       setPayoutBatches([]);
+      setPayoutItems([]);
       setCommissionPlans([]);
       setCommissionRules([]);
       setAuditLogs([]);
@@ -2197,6 +2276,7 @@ function App() {
       ordersResponse,
       commissionsResponse,
       payoutsResponse,
+      payoutItemsResponse,
       plansResponse,
       auditLogsResponse,
       deliveryLogsResponse
@@ -2212,6 +2292,7 @@ function App() {
       fetch('/api/admin/orders'),
       fetch('/api/admin/commissions'),
       fetch('/api/admin/payouts'),
+      fetch('/api/admin/payout-items'),
       fetch('/api/admin/commission-plans'),
       fetch('/api/admin/audit-logs'),
       fetch('/api/admin/email-delivery-logs')
@@ -2228,6 +2309,7 @@ function App() {
       ordersPayload,
       commissionsPayload,
       payoutsPayload,
+      payoutItemsPayload,
       plansPayload,
       auditLogsPayload,
       deliveryLogsPayload
@@ -2243,6 +2325,7 @@ function App() {
       ordersResponse.json(),
       commissionsResponse.json(),
       payoutsResponse.json(),
+      payoutItemsResponse.json(),
       plansResponse.json(),
       auditLogsResponse.json(),
       deliveryLogsResponse.json()
@@ -2258,6 +2341,7 @@ function App() {
     setOrders(ordersPayload.orders);
     setCommissionSummaries(commissionsPayload.summaries);
     setPayoutBatches(payoutsPayload.batches);
+    setPayoutItems(payoutItemsPayload.items);
     setCommissionPlans(plansPayload.plans);
     setCommissionRules(plansPayload.rules);
     setAuditLogs(auditLogsPayload.entries);
@@ -2508,6 +2592,7 @@ function App() {
         <CommissionsPanel
           summaries={commissionSummaries}
           payouts={payoutBatches}
+          payoutItems={payoutItems}
           plans={commissionPlans}
           rules={commissionRules}
           onBatchUpdated={(batch) => {

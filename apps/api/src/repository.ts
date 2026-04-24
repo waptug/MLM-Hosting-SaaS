@@ -3,6 +3,7 @@ import type {
   Customer,
   Member,
   Order,
+  PayoutItem,
   PayoutBatch,
   Product,
   SalesGroup
@@ -41,6 +42,7 @@ export type BusinessRepository = {
   addOrder(input: Omit<Order, 'id' | 'tenantSlug'>): OrderRecord | Promise<OrderRecord>;
   listCommissionSummary(): Array<CommissionSummary> | Promise<Array<CommissionSummary>>;
   listPayoutBatches(): Array<PayoutBatch> | Promise<Array<PayoutBatch>>;
+  listPayoutItems(): Array<PayoutItem> | Promise<Array<PayoutItem>>;
   approvePayoutBatch(batchId: string, actorEmail: string): PayoutBatch | Promise<PayoutBatch>;
   markPayoutBatchPaid(batchId: string, actorEmail: string): PayoutBatch | Promise<PayoutBatch>;
 };

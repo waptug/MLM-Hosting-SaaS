@@ -41,6 +41,8 @@ Current starter migration:
 - [0013_commission_plans_and_rules.sql](./0013_commission_plans_and_rules.sql)
 - [0014_demo_commission_plan.sql](./0014_demo_commission_plan.sql)
 - [0015_commission_rule_uniqueness.sql](./0015_commission_rule_uniqueness.sql)
+- [0016_payout_items.sql](./0016_payout_items.sql)
+- [0017_demo_payout_items.sql](./0017_demo_payout_items.sql)
 
 Core entity coverage now includes:
 
@@ -57,6 +59,7 @@ Core entity coverage now includes:
 - `email_delivery_logs`
 - `commission_plan_versions`
 - `commission_rules`
+- `payout_items`
 
 Current runtime note:
 

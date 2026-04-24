@@ -99,6 +99,20 @@ export type PayoutBatch = {
   paidByEmail?: string;
 };
 
+export type PayoutItem = {
+  id: string;
+  batchId: string;
+  payeeMemberId: string;
+  payeeMemberName: string;
+  lineLabel: string;
+  sourceSummary: string;
+  directCommission: number;
+  overrideCommission: number;
+  totalAmount: number;
+  orderCount: number;
+  notes: string;
+};
+
 export type AuditLogEntry = {
   id: string;
   actorEmail: string;
@@ -656,5 +670,40 @@ export async function listCommissionRules(): Promise<CommissionRule[]> {
     ...row,
     percentRate: Number(row.percentRate || '0'),
     fixedAmount: Number(row.fixedAmount || '0')
+  }));
+}
+
+export async function listPayoutItems(): Promise<PayoutItem[]> {
+  const pool = await getPool();
+  const id = await tenantId(pool);
+  const result = await pool.query<PayoutItem>(
+    `
+      SELECT
+        item.id::text AS id,
+        item.batch_id::text AS "batchId",
+        item.payee_member_id::text AS "payeeMemberId",
+        COALESCE(member.first_name || ' ' || member.last_name, '') AS "payeeMemberName",
+        item.line_label AS "lineLabel",
+        item.source_summary AS "sourceSummary",
+        item.direct_commission::text AS "directCommission",
+        item.override_commission::text AS "overrideCommission",
+        item.total_amount::text AS "totalAmount",
+        item.order_count AS "orderCount",
+        item.notes
+      FROM payout_items item
+      JOIN payout_batches batch ON batch.id = item.batch_id
+      LEFT JOIN members member ON member.id = item.payee_member_id
+      WHERE batch.tenant_id = $1
+      ORDER BY batch.scheduled_for DESC, item.total_amount DESC, item.line_label
+    `,
+    [id]
+  );
+
+  return result.rows.map((row) => ({
+    ...row,
+    directCommission: Number(row.directCommission || '0'),
+    overrideCommission: Number(row.overrideCommission || '0'),
+    totalAmount: Number(row.totalAmount || '0'),
+    orderCount: Number(row.orderCount || '0')
   }));
 }

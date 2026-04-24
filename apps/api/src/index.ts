@@ -24,6 +24,7 @@ import {
   listCommissionRules,
   listAuditLogs,
   listEmailDeliveryLogs,
+  listPayoutItems,
   listTenantInvitations,
   listTenantUsers,
   recordEmailDelivery,
@@ -817,6 +818,15 @@ app.get(
   requireRole(['tenant_owner', 'tenant_manager', 'finance_manager']),
   async (_req, res) => {
     res.json({ batches: await businessRepository.listPayoutBatches() });
+  }
+);
+
+app.get(
+  '/api/admin/payout-items',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager', 'finance_manager']),
+  async (_req, res) => {
+    res.json({ items: await listPayoutItems() });
   }
 );
 

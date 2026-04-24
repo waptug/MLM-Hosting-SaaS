@@ -405,8 +405,8 @@ async function listPayoutBatchesQuery(pool: DbPool) {
         batch.period_label AS "periodLabel",
         batch.scheduled_for::text AS "scheduledFor",
         batch.status,
-        batch.payee_count AS "payeeCount",
-        batch.total_amount::text AS "totalAmount",
+        COALESCE(item_stats.payee_count, batch.payee_count) AS "payeeCount",
+        COALESCE(item_stats.total_amount::numeric, batch.total_amount)::text AS "totalAmount",
         batch.approved_at::text AS "approvedAt",
         approver.email AS "approvedByEmail",
         batch.paid_at::text AS "paidAt",
@@ -414,6 +414,14 @@ async function listPayoutBatchesQuery(pool: DbPool) {
       FROM payout_batches batch
       LEFT JOIN users approver ON approver.id = batch.approved_by_user_id
       LEFT JOIN users payer ON payer.id = batch.paid_by_user_id
+      LEFT JOIN (
+        SELECT
+          batch_id,
+          COUNT(*)::integer AS payee_count,
+          COALESCE(SUM(total_amount), 0)::numeric AS total_amount
+        FROM payout_items
+        GROUP BY batch_id
+      ) item_stats ON item_stats.batch_id = batch.id
       WHERE batch.tenant_id = $1
       ORDER BY batch.scheduled_for DESC
     `,
@@ -432,6 +440,52 @@ async function listPayoutBatchesQuery(pool: DbPool) {
     paidAt: row.paidAt,
     paidByEmail: row.paidByEmail || ''
   })) satisfies PayoutBatch[];
+}
+
+async function listPayoutItemsQuery(pool: DbPool) {
+  const { tenantId } = await tenantContext(pool);
+  const result = await pool.query<{
+    id: string;
+    batchId: string;
+    payeeMemberId: string;
+    payeeMemberName: string;
+    lineLabel: string;
+    sourceSummary: string;
+    directCommission: string;
+    overrideCommission: string;
+    totalAmount: string;
+    orderCount: number;
+    notes: string;
+  }>(
+    `
+      SELECT
+        item.id::text AS id,
+        item.batch_id::text AS "batchId",
+        item.payee_member_id::text AS "payeeMemberId",
+        COALESCE(member.first_name || ' ' || member.last_name, '') AS "payeeMemberName",
+        item.line_label AS "lineLabel",
+        item.source_summary AS "sourceSummary",
+        item.direct_commission::text AS "directCommission",
+        item.override_commission::text AS "overrideCommission",
+        item.total_amount::text AS "totalAmount",
+        item.order_count AS "orderCount",
+        item.notes
+      FROM payout_items item
+      JOIN payout_batches batch ON batch.id = item.batch_id
+      LEFT JOIN members member ON member.id = item.payee_member_id
+      WHERE batch.tenant_id = $1
+      ORDER BY batch.scheduled_for DESC, item.total_amount DESC, item.line_label
+    `,
+    [tenantId]
+  );
+
+  return result.rows.map((row) => ({
+    ...row,
+    directCommission: Number(row.directCommission || '0'),
+    overrideCommission: Number(row.overrideCommission || '0'),
+    totalAmount: Number(row.totalAmount || '0'),
+    orderCount: Number(row.orderCount || '0')
+  }));
 }
 
 async function updatePayoutBatchStatus(
@@ -628,6 +682,10 @@ export const postgresBusinessRepository: BusinessRepository = {
   async listPayoutBatches() {
     const pool = await getPool();
     return listPayoutBatchesQuery(pool);
+  },
+  async listPayoutItems() {
+    const pool = await getPool();
+    return listPayoutItemsQuery(pool);
   },
   async approvePayoutBatch(batchId, actorEmail) {
     const pool = await getPool();
