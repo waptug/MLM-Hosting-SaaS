@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: mlm_hosting_saas
+      POSTGRES_USER: mlm
+      POSTGRES_PASSWORD: mlm_dev_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/api.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://mlm:mlm_dev_password@postgres:5432/mlm_hosting_saas
+      NODE_ENV: production
+      PORT: 4000
+      WEB_PORT: 8080
+      TRUSTED_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
+      SESSION_COOKIE_SECURE: "false"
+      SESSION_COOKIE_SAME_SITE: Lax
+    depends_on:
+      - postgres
+    ports:
+      - "4000:4000"
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/web.Dockerfile
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+
+volumes:
+  postgres_data:

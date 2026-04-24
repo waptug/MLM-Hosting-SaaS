@@ -55,6 +55,7 @@ Required runtime environment:
 
 ```bash
 export DATABASE_URL=postgresql://mlm:mlm_dev_password@127.0.0.1:5433/mlm_hosting_saas
+export TRUSTED_ORIGINS=http://localhost:5174,http://127.0.0.1:5174
 ```
 
 Default local URLs:
@@ -75,6 +76,17 @@ DATABASE_URL=postgresql://mlm:mlm_dev_password@127.0.0.1:5433/mlm_hosting_saas n
 ```
 
 `npm run test:api` builds the database and API packages, then runs in-process integration checks against the Express app with the local Postgres database.
+
+## Deployment Layout
+
+The `infra/` folder contains a local container layout for production-style runs:
+
+- `infra/compose.yml`
+- `infra/api.Dockerfile`
+- `infra/web.Dockerfile`
+- `infra/nginx.conf`
+
+The compose file runs PostgreSQL, the API, and the web app with the web server proxying `/api` to the API container.
 
 ## Verified
 

@@ -16,6 +16,20 @@ function parseSameSite(value: string | undefined) {
   return 'lax';
 }
 
+function parseTrustedOrigins(value: string | undefined, webPort: number) {
+  const raw = String(value || '').trim();
+  const defaults = [
+    `http://localhost:${webPort}`,
+    `http://127.0.0.1:${webPort}`
+  ];
+  if (!raw) return defaults;
+
+  return raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
 export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
   port: Number(process.env.PORT || 4000),
@@ -26,5 +40,8 @@ export const config = {
   sessionCookieSecure: parseBoolean(process.env.SESSION_COOKIE_SECURE, process.env.NODE_ENV === 'production'),
   sessionCookieSameSite: parseSameSite(process.env.SESSION_COOKIE_SAME_SITE),
   sessionCookieDomain: String(process.env.SESSION_COOKIE_DOMAIN || '').trim() || undefined,
-  sessionCookieMaxAgeDays: Number(process.env.SESSION_COOKIE_MAX_AGE_DAYS || 14)
+  sessionCookieMaxAgeDays: Number(process.env.SESSION_COOKIE_MAX_AGE_DAYS || 14),
+  loginFailureThreshold: Math.max(1, Number(process.env.LOGIN_FAILURE_THRESHOLD || 5)),
+  loginLockoutMinutes: Math.max(1, Number(process.env.LOGIN_LOCKOUT_MINUTES || 15)),
+  trustedOrigins: parseTrustedOrigins(process.env.TRUSTED_ORIGINS, Number(process.env.WEB_PORT || 5174))
 };

@@ -1,8 +1,10 @@
 import cors from 'cors';
 import express from 'express';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { allRoles } from '../../../packages/auth/src/model.js';
 import { tenantRoles } from '../../../packages/auth/src/model.js';
+import { pool } from '@mlm-hosting-saas/database';
 import { attachTenantContext, requireRole } from './auth.js';
 import {
   acceptInvitation,
@@ -56,12 +58,75 @@ app.use(
 );
 app.use(express.json());
 
+app.use((req, res, next) => {
+  const requestId = req.header('x-request-id') || randomUUID();
+  const startedAt = Date.now();
+  res.setHeader('X-Request-Id', requestId);
+  res.on('finish', () => {
+    console.log(
+      JSON.stringify({
+        level: 'info',
+        requestId,
+        method: req.method,
+        path: req.originalUrl,
+        status: res.statusCode,
+        durationMs: Date.now() - startedAt
+      })
+    );
+  });
+  next();
+});
+
+const unsafeMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+function normalizeOriginHeader(origin: string) {
+  return origin.trim().replace(/\/$/, '');
+}
+
+function isTrustedOrigin(value: string | undefined) {
+  const normalized = normalizeOriginHeader(String(value || '').trim());
+  return config.trustedOrigins.some((origin) => normalizeOriginHeader(origin) === normalized);
+}
+
+function getRequestOrigin(req: express.Request) {
+  const origin = String(req.header('origin') || '').trim();
+  if (origin) return origin;
+
+  const referer = String(req.header('referer') || '').trim();
+  if (!referer) return '';
+
+  try {
+    return new URL(referer).origin;
+  } catch {
+    return '';
+  }
+}
+
+app.use((req, res, next) => {
+  if (!unsafeMethods.has(req.method.toUpperCase())) {
+    next();
+    return;
+  }
+
+  const origin = getRequestOrigin(req);
+  if (!origin || !isTrustedOrigin(origin)) {
+    res.status(403).json({
+      error: 'Unsafe request origin rejected.',
+      trustedOrigins: config.trustedOrigins
+    });
+    return;
+  }
+
+  next();
+});
+
 function setSessionCookie(res: express.Response, sessionToken: string) {
+  const sameSite = config.sessionCookieSameSite[0].toUpperCase() + config.sessionCookieSameSite.slice(1);
   const parts = [
     `${sessionCookieName}=${encodeURIComponent(sessionToken)}`,
     'Path=/',
     'HttpOnly',
-    `SameSite=${config.sessionCookieSameSite[0].toUpperCase()}${config.sessionCookieSameSite.slice(1)}`
+    `SameSite=${sameSite}`
   ];
   if (config.sessionCookieSecure) parts.push('Secure');
   if (config.sessionCookieDomain) parts.push(`Domain=${config.sessionCookieDomain}`);
@@ -73,11 +138,12 @@ function setSessionCookie(res: express.Response, sessionToken: string) {
 }
 
 function clearSessionCookie(res: express.Response) {
+  const sameSite = config.sessionCookieSameSite[0].toUpperCase() + config.sessionCookieSameSite.slice(1);
   const parts = [
     `${sessionCookieName}=`,
     'Path=/',
     'HttpOnly',
-    `SameSite=${config.sessionCookieSameSite[0].toUpperCase()}${config.sessionCookieSameSite.slice(1)}`,
+    `SameSite=${sameSite}`,
     'Max-Age=0'
   ];
   if (config.sessionCookieSecure) parts.push('Secure');
@@ -93,6 +159,24 @@ app.get('/api/health', (_req, res) => {
     storageProvider: config.storageProvider,
     repositoryMode: businessRepositoryMode
   });
+});
+
+app.get('/api/health/ready', async (_req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({
+      ok: true,
+      database: 'ready',
+      storageProvider: config.storageProvider,
+      repositoryMode: businessRepositoryMode
+    });
+  } catch (error) {
+    res.status(503).json({
+      ok: false,
+      database: 'unavailable',
+      error: error instanceof Error ? error.message : 'Database readiness check failed.'
+    });
+  }
 });
 
 app.get('/api/bootstrap', async (_req, res) => {
@@ -165,20 +249,37 @@ app.post('/api/auth/login', async (req, res) => {
     return;
   }
 
-  const authenticated = await authenticateUser({ tenantSlug, email, password });
-  if (!authenticated) {
-    res.status(401).json({ error: 'Invalid tenant, email, or password.' });
-    return;
-  }
+  try {
+    const authenticated = await authenticateUser({ tenantSlug, email, password });
+    if (!authenticated) {
+      res.status(401).json({ error: 'Invalid tenant, email, or password.' });
+      return;
+    }
 
-  const session = await createAuthSession(authenticated);
-  setSessionCookie(res, session.sessionToken);
-  res.json({
-    ok: true,
-    tenantSlug,
-    email,
-    expiresAt: session.expiresAt
-  });
+    const session = await createAuthSession(authenticated);
+    setSessionCookie(res, session.sessionToken);
+    res.json({
+      ok: true,
+      tenantSlug,
+      email,
+      expiresAt: session.expiresAt
+    });
+  } catch (error) {
+    if (error instanceof Error && (error as { code?: string }).code === 'LOGIN_LOCKED') {
+      const lockedUntil = (error as { lockedUntil?: string }).lockedUntil;
+      if (lockedUntil) {
+        res.setHeader('Retry-After', Math.max(60, Math.ceil((new Date(lockedUntil).getTime() - Date.now()) / 1000)));
+      }
+      res.status(423).json({
+        error: error.message,
+        lockedUntil,
+        failedAttempts: (error as { failedAttempts?: number }).failedAttempts
+      });
+      return;
+    }
+
+    throw error;
+  }
 });
 
 app.post('/api/auth/logout', async (req, res) => {
@@ -1045,6 +1146,18 @@ app.get(
     res.json({ deliveries: await listEmailDeliveryLogs() });
   }
 );
+
+app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(
+    JSON.stringify({
+      level: 'error',
+      message: error instanceof Error ? error.message : 'Unhandled API error'
+    })
+  );
+  res.status(500).json({
+    error: error instanceof Error ? error.message : 'Unhandled API error'
+  });
+});
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   app.listen(config.port, '127.0.0.1', () => {

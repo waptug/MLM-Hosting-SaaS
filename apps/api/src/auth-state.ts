@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { pool } from '@mlm-hosting-saas/database';
 import type { RoleKey, TenantContext } from '../../../packages/auth/src/model.js';
+import { config } from './config.js';
 import { createSessionToken, hashPassword, hashSessionToken, verifyPassword } from './auth-security.js';
 
 type SessionRow = {
@@ -28,6 +29,12 @@ type InvitationRow = {
   expiresAt: string;
 };
 
+type LoginSecurityRow = {
+  id: string;
+  failedAttempts: number;
+  lockedUntil: string | null;
+};
+
 async function buildTenantContextFromQuery(sql: string, params: unknown[]) {
   const result = await pool.query<SessionRow>(
     sql,
@@ -53,6 +60,116 @@ async function buildTenantContextFromQuery(sql: string, params: unknown[]) {
     },
     role: row.role
   } satisfies TenantContext;
+}
+
+function lockoutExpiresAt() {
+  return new Date(Date.now() + config.loginLockoutMinutes * 60 * 1000).toISOString();
+}
+
+async function getLoginSecurityState(tenantId: string, email: string) {
+  const result = await pool.query<LoginSecurityRow>(
+    `
+      SELECT
+        id::text AS id,
+        failed_attempts AS "failedAttempts",
+        locked_until::text AS "lockedUntil"
+      FROM login_security_states
+      WHERE tenant_id = $1 AND email = $2
+      LIMIT 1
+    `,
+    [tenantId, email.trim().toLowerCase()]
+  );
+  return result.rows[0] || null;
+}
+
+async function upsertLoginSecurityState(input: {
+  tenantId: string;
+  email: string;
+  failedAttempts: number;
+  lockedUntil: string | null;
+}) {
+  await pool.query(
+    `
+      INSERT INTO login_security_states (
+        id,
+        tenant_id,
+        email,
+        failed_attempts,
+        locked_until,
+        last_failed_at,
+        updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+      ON CONFLICT (tenant_id, email)
+      DO UPDATE SET
+        failed_attempts = EXCLUDED.failed_attempts,
+        locked_until = EXCLUDED.locked_until,
+        last_failed_at = NOW(),
+        updated_at = NOW()
+    `,
+    [randomUUID(), input.tenantId, input.email.trim().toLowerCase(), input.failedAttempts, input.lockedUntil]
+  );
+}
+
+export async function recordFailedLoginAttempt(tenantId: string, email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const current = await getLoginSecurityState(tenantId, normalizedEmail);
+  const failedAttempts = (current?.failedAttempts || 0) + 1;
+  const lockedUntil = failedAttempts >= config.loginFailureThreshold ? lockoutExpiresAt() : current?.lockedUntil || null;
+
+  await upsertLoginSecurityState({
+    tenantId,
+    email: normalizedEmail,
+    failedAttempts,
+    lockedUntil
+  });
+
+  return {
+    failedAttempts,
+    lockedUntil
+  };
+}
+
+export async function resetLoginAttempts(tenantId: string, email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  await pool.query(
+    `
+      INSERT INTO login_security_states (
+        id,
+        tenant_id,
+        email,
+        failed_attempts,
+        locked_until,
+        last_success_at,
+        updated_at
+      )
+      VALUES ($1, $2, $3, 0, NULL, NOW(), NOW())
+      ON CONFLICT (tenant_id, email)
+      DO UPDATE SET
+        failed_attempts = 0,
+        locked_until = NULL,
+        last_success_at = NOW(),
+        updated_at = NOW()
+    `,
+    [randomUUID(), tenantId, normalizedEmail]
+  );
+}
+
+export async function getLoginLockout(tenantId: string, email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const state = await getLoginSecurityState(tenantId, normalizedEmail);
+  if (!state?.lockedUntil) return null;
+
+  const lockedUntil = new Date(state.lockedUntil);
+  if (Number.isNaN(lockedUntil.getTime()) || lockedUntil.getTime() <= Date.now()) {
+    await resetLoginAttempts(tenantId, normalizedEmail);
+    return null;
+  }
+
+  return {
+    failedAttempts: state.failedAttempts,
+    lockedUntil: state.lockedUntil
+  };
 }
 
 export async function resolveTenantContextBySessionToken(sessionToken: string) {
@@ -123,6 +240,14 @@ export async function createAuthSession(input: {
   userId: string;
   role: RoleKey;
 }) {
+  await pool.query(
+    `
+      DELETE FROM auth_sessions
+      WHERE tenant_id = $1 AND user_id = $2
+    `,
+    [input.tenantId, input.userId]
+  );
+
   const sessionToken = createSessionToken();
   const sessionTokenHash = hashSessionToken(sessionToken);
   const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString();
@@ -174,8 +299,33 @@ export async function authenticateUser(input: {
   const row = result.rows[0];
   if (!row) return null;
 
+  const lockout = await getLoginLockout(row.tenantId, input.email);
+  if (lockout) {
+    const error = new Error('This account is temporarily locked after too many failed login attempts.');
+    Object.assign(error, {
+      code: 'LOGIN_LOCKED',
+      lockedUntil: lockout.lockedUntil,
+      failedAttempts: lockout.failedAttempts
+    });
+    throw error;
+  }
+
   const passwordValid = await verifyPassword(input.password, row.passwordHash);
-  if (!passwordValid) return null;
+  if (!passwordValid) {
+    const securityState = await recordFailedLoginAttempt(row.tenantId, input.email);
+    if (securityState.lockedUntil) {
+      const error = new Error('This account is temporarily locked after too many failed login attempts.');
+      Object.assign(error, {
+        code: 'LOGIN_LOCKED',
+        lockedUntil: securityState.lockedUntil,
+        failedAttempts: securityState.failedAttempts
+      });
+      throw error;
+    }
+    return null;
+  }
+
+  await resetLoginAttempts(row.tenantId, input.email);
 
   return {
     tenantId: row.tenantId,

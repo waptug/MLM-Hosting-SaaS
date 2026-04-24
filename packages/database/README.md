@@ -47,6 +47,7 @@ Current starter migration:
 - [0019_demo_commission_snapshots.sql](./0019_demo_commission_snapshots.sql)
 - [0020_tenant_subscriptions.sql](./0020_tenant_subscriptions.sql)
 - [0021_demo_tenant_subscription.sql](./0021_demo_tenant_subscription.sql)
+- [0022_login_security_states.sql](./0022_login_security_states.sql)
 
 Core entity coverage now includes:
 

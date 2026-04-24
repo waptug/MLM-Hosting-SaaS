@@ -37,10 +37,14 @@ let invitedSessionCookie = '';
 let passwordResetTokenForOwner = '';
 
 async function invoke(method, path, { headers = {}, body } = {}) {
+  const normalizedHeaders = { ...headers };
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(method).toUpperCase()) && !normalizedHeaders.origin) {
+    normalizedHeaders.origin = 'http://localhost:5174';
+  }
   const request = httpMocks.createRequest({
     method,
     url: path,
-    headers,
+    headers: normalizedHeaders,
     body
   });
   const response = httpMocks.createResponse({ eventEmitter: EventEmitter });
@@ -71,6 +75,10 @@ try {
   const health = await invoke('GET', '/api/health');
   assert(health.status === 200, 'Health check failed.');
   assert(health.body?.storageProvider === 'postgres', 'Expected Postgres storage provider.');
+
+  const ready = await invoke('GET', '/api/health/ready');
+  assert(ready.status === 200, 'Readiness check failed.');
+  assert(ready.body?.database === 'ready', 'Readiness check did not report a ready database.');
 
   const bootstrap = await invoke('GET', '/api/bootstrap');
   assert(bootstrap.status === 200, 'Bootstrap request failed.');
@@ -474,9 +482,46 @@ try {
       ) &&
       deliveryLogs.body.deliveries.some(
         (entry) => entry.deliveryType === 'password_reset' && entry.recipientEmail === 'owner@example.com'
-      ),
+    ),
     'Email delivery log did not capture invitation and password reset deliveries.'
   );
+
+  const loginLockoutAttempts = [];
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    loginLockoutAttempts.push(
+      await invoke('POST', '/api/auth/login', {
+        headers: {
+          'content-type': 'application/json'
+        },
+        body: {
+          tenantSlug: 'demo-hosting-group',
+          email: 'owner@example.com',
+          password: 'wrong-password'
+        }
+      })
+    );
+  }
+  assert(
+    loginLockoutAttempts.slice(0, 4).every((attempt) => attempt.status === 401),
+    'Initial failed login attempts should return unauthorized.'
+  );
+  assert(loginLockoutAttempts[4].status === 423, 'Login should lock after repeated failures.');
+  assert(
+    String(loginLockoutAttempts[4].body?.error || '').includes('locked'),
+    'Lockout response should explain the lock.'
+  );
+
+  const loginDuringLockout = await invoke('POST', '/api/auth/login', {
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: {
+      tenantSlug: 'demo-hosting-group',
+      email: 'owner@example.com',
+      password: 'demo-password-updated'
+    }
+  });
+  assert(loginDuringLockout.status === 423, 'Correct password should still be blocked during lockout.');
 
   const logout = await invoke('POST', '/api/auth/logout', {
     headers: {
@@ -499,6 +544,7 @@ try {
         ok: true,
         checks: [
           'health',
+          'readiness',
           'bootstrap',
           'session',
           'finance tenant context',
@@ -516,6 +562,7 @@ try {
           'payout approve and pay',
           'invitation acceptance and invited login',
           'password reset request and completion',
+          'login lockout',
           'logout'
         ]
       },
@@ -590,6 +637,11 @@ try {
       "DELETE FROM email_delivery_logs WHERE delivery_type = 'password_reset' AND recipient_email = 'owner@example.com'"
     );
   }
+
+  await pool.query('DELETE FROM login_security_states WHERE tenant_id = $1 AND email = $2', [
+    '00000000-0000-0000-0000-000000000001',
+    'owner@example.com'
+  ]);
 
   if (createdAcceptedUserEmail) {
     await pool.query('DELETE FROM tenant_users WHERE user_id IN (SELECT id FROM users WHERE email = $1)', [createdAcceptedUserEmail]);
