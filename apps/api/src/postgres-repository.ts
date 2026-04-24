@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { demoMemberships, demoTenant } from './demo-data.js';
+import { demoTenant } from './demo-data.js';
 import type {
   CommissionSummary,
   Customer,
