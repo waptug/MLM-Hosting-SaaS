@@ -18,7 +18,10 @@ function assert(condition, message) {
 
 let createdSalesGroupId = null;
 let createdInvitationId = null;
+let createdAcceptedUserEmail = null;
 const uniqueSuffix = randomUUID().slice(0, 8).toUpperCase();
+let sessionCookie = '';
+let invitedSessionCookie = '';
 
 async function invoke(method, path, { headers = {}, body } = {}) {
   const request = httpMocks.createRequest({
@@ -44,6 +47,7 @@ async function invoke(method, path, { headers = {}, body } = {}) {
 
   return {
     status: response.statusCode,
+    headers: response._getHeaders(),
     body: response._isJSON()
       ? response._getJSONData()
       : response._getData()
@@ -61,12 +65,34 @@ try {
   assert(bootstrap.body?.summary?.userCount >= 1, 'Bootstrap summary did not return tenant users.');
   assert(bootstrap.body?.capabilities?.storageProvider === 'postgres', 'Bootstrap did not report Postgres.');
 
-  const session = await invoke('GET', '/api/session');
+  const anonymousSession = await invoke('GET', '/api/session');
+  assert(anonymousSession.status === 401, 'Anonymous session should not resolve.');
+
+  const login = await invoke('POST', '/api/auth/login', {
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: {
+      tenantSlug: 'demo-hosting-group',
+      email: 'owner@example.com',
+      password: 'demo-password'
+    }
+  });
+  assert(login.status === 200, 'Login request failed.');
+  sessionCookie = String(login.headers['set-cookie'] || '').split(';')[0];
+  assert(sessionCookie.includes('mlm_hosting_session='), 'Login did not return a session cookie.');
+
+  const session = await invoke('GET', '/api/session', {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
   assert(session.status === 200, 'Session request failed.');
-  assert(session.body?.user?.email === 'owner@example.com', 'Default owner session did not resolve.');
+  assert(session.body?.user?.email === 'owner@example.com', 'Owner session did not resolve after login.');
 
   const financeContext = await invoke('GET', '/api/tenant-context', {
     headers: {
+      'x-tenant-slug': 'demo-hosting-group',
       'x-user-email': 'finance@example.com'
     }
   });
@@ -78,18 +104,24 @@ try {
 
   const forbiddenTenantUsers = await invoke('GET', '/api/admin/tenant-users', {
     headers: {
+      'x-tenant-slug': 'demo-hosting-group',
       'x-user-email': 'rep@example.com'
     }
   });
   assert(forbiddenTenantUsers.status === 403, 'Sales rep should not access tenant user admin.');
 
-  const salesGroupsBefore = await invoke('GET', '/api/admin/sales-groups');
+  const salesGroupsBefore = await invoke('GET', '/api/admin/sales-groups', {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
   assert(salesGroupsBefore.status === 200, 'Sales group list request failed.');
   const baselineCount = salesGroupsBefore.body?.salesGroups?.length ?? 0;
 
   const createSalesGroup = await invoke('POST', '/api/admin/sales-groups', {
     headers: {
-      'content-type': 'application/json'
+      'content-type': 'application/json',
+      cookie: sessionCookie
     },
     body: {
       name: `Integration Group ${uniqueSuffix}`,
@@ -105,14 +137,22 @@ try {
   createdSalesGroupId = createSalesGroup.body?.salesGroup?.id ?? null;
   assert(createdSalesGroupId, 'Created sales group did not return an id.');
 
-  const salesGroupsAfter = await invoke('GET', '/api/admin/sales-groups');
+  const salesGroupsAfter = await invoke('GET', '/api/admin/sales-groups', {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
   assert(salesGroupsAfter.status === 200, 'Sales group list after create failed.');
   assert(
     (salesGroupsAfter.body?.salesGroups?.length ?? 0) === baselineCount + 1,
     'Sales group count did not increase after create.'
   );
 
-  const auditLogs = await invoke('GET', '/api/admin/audit-logs');
+  const auditLogs = await invoke('GET', '/api/admin/audit-logs', {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
   assert(auditLogs.status === 200, 'Audit log list request failed.');
   assert(
     Array.isArray(auditLogs.body?.entries) &&
@@ -120,13 +160,18 @@ try {
     'Audit log did not capture the created sales group.'
   );
 
-  const invitationsBefore = await invoke('GET', '/api/admin/invitations');
+  const invitationsBefore = await invoke('GET', '/api/admin/invitations', {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
   assert(invitationsBefore.status === 200, 'Invitation list request failed.');
   const invitationBaselineCount = invitationsBefore.body?.invitations?.length ?? 0;
 
   const createInvitation = await invoke('POST', '/api/admin/invitations', {
     headers: {
-      'content-type': 'application/json'
+      'content-type': 'application/json',
+      cookie: sessionCookie
     },
     body: {
       email: `invite-${uniqueSuffix.toLowerCase()}@example.com`,
@@ -137,16 +182,26 @@ try {
   });
   assert(createInvitation.status === 201, 'Invitation create request failed.');
   createdInvitationId = createInvitation.body?.invitation?.id ?? null;
+  createdAcceptedUserEmail = createInvitation.body?.invitation?.email ?? null;
   assert(createdInvitationId, 'Created invitation did not return an id.');
+  assert(createInvitation.body?.invitation?.acceptanceToken, 'Created invitation did not return an acceptance token.');
 
-  const invitationsAfter = await invoke('GET', '/api/admin/invitations');
+  const invitationsAfter = await invoke('GET', '/api/admin/invitations', {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
   assert(invitationsAfter.status === 200, 'Invitation list after create failed.');
   assert(
     (invitationsAfter.body?.invitations?.length ?? 0) === invitationBaselineCount + 1,
     'Invitation count did not increase after create.'
   );
 
-  const auditLogsAfterInvite = await invoke('GET', '/api/admin/audit-logs');
+  const auditLogsAfterInvite = await invoke('GET', '/api/admin/audit-logs', {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
   assert(auditLogsAfterInvite.status === 200, 'Audit log list after invitation failed.');
   assert(
     Array.isArray(auditLogsAfterInvite.body?.entries) &&
@@ -155,6 +210,54 @@ try {
       ),
     'Audit log did not capture the created invitation.'
   );
+
+  const acceptInvitation = await invoke('POST', '/api/auth/accept-invitation', {
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: {
+      tenantSlug: 'demo-hosting-group',
+      invitationToken: createInvitation.body.invitation.acceptanceToken,
+      password: 'invite-password'
+    }
+  });
+  assert(acceptInvitation.status === 201, 'Invitation acceptance request failed.');
+  invitedSessionCookie = String(acceptInvitation.headers['set-cookie'] || '').split(';')[0];
+  assert(invitedSessionCookie.includes('mlm_hosting_session='), 'Invitation acceptance did not return a session cookie.');
+
+  const invitedSession = await invoke('GET', '/api/session', {
+    headers: {
+      cookie: invitedSessionCookie
+    }
+  });
+  assert(invitedSession.status === 200, 'Accepted invitation session did not resolve.');
+  assert(invitedSession.body?.user?.email === createdAcceptedUserEmail, 'Accepted invitation user email mismatch.');
+
+  const invitedLogin = await invoke('POST', '/api/auth/login', {
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: {
+      tenantSlug: 'demo-hosting-group',
+      email: createdAcceptedUserEmail,
+      password: 'invite-password'
+    }
+  });
+  assert(invitedLogin.status === 200, 'Invited user login failed after acceptance.');
+
+  const logout = await invoke('POST', '/api/auth/logout', {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(logout.status === 200, 'Logout request failed.');
+
+  const loggedOutSession = await invoke('GET', '/api/session', {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(loggedOutSession.status === 401, 'Logged out session should no longer resolve.');
 
   console.log(
     JSON.stringify(
@@ -165,10 +268,13 @@ try {
           'bootstrap',
           'session',
           'finance tenant context',
+          'password login and cookie session',
           'tenant user role denial',
           'sales group create and list',
           'audit log capture',
-          'invitation create and list'
+          'invitation create and list',
+          'invitation acceptance and invited login',
+          'logout'
         ]
       },
       null,
@@ -176,6 +282,11 @@ try {
     )
   );
 } finally {
+  if (createdAcceptedUserEmail) {
+    await pool.query('DELETE FROM tenant_users WHERE user_id IN (SELECT id FROM users WHERE email = $1)', [createdAcceptedUserEmail]);
+    await pool.query('DELETE FROM users WHERE email = $1', [createdAcceptedUserEmail]);
+  }
+
   if (createdInvitationId) {
     await pool.query('DELETE FROM tenant_invitations WHERE id = $1', [createdInvitationId]);
   }

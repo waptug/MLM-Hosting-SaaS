@@ -1,65 +1,23 @@
 import type { NextFunction, Request, Response } from 'express';
 import { allRoles } from '../../../packages/auth/src/model.js';
 import type { RoleKey, TenantContext } from '../../../packages/auth/src/model.js';
-import { pool } from '@mlm-hosting-saas/database';
-import { demoTenant, demoUserEmail } from './demo-data.js';
+import { resolveTenantContextByEmail, resolveTenantContextBySessionToken } from './auth-state.js';
+import { parseCookies, sessionCookieName } from './auth-security.js';
+import { demoTenant } from './demo-data.js';
 
 async function resolveTenantContext(req: Request): Promise<TenantContext | null> {
-  const tenantSlug = String(req.header('x-tenant-slug') || demoTenant.slug).trim();
-  const userEmail = String(req.header('x-user-email') || demoUserEmail).trim().toLowerCase();
+  const cookies = parseCookies(req.header('cookie'));
+  const sessionToken = cookies[sessionCookieName];
+  if (sessionToken) {
+    const sessionContext = await resolveTenantContextBySessionToken(sessionToken);
+    if (sessionContext) return sessionContext;
+  }
 
-  const result = await pool.query<{
-    tenantId: string;
-    tenantSlug: string;
-    tenantName: string;
-    themePreset: string;
-    tenantStatus: 'draft' | 'active';
-    userId: string;
-    email: string;
-    firstName: string;
-    lastName: string;
-    role: RoleKey;
-  }>(
-    `
-      SELECT
-        t.id::text AS "tenantId",
-        t.slug AS "tenantSlug",
-        t.name AS "tenantName",
-        t.theme_preset AS "themePreset",
-        t.status AS "tenantStatus",
-        u.id::text AS "userId",
-        u.email,
-        u.first_name AS "firstName",
-        u.last_name AS "lastName",
-        tu.role_key AS role
-      FROM tenant_users tu
-      JOIN tenants t ON t.id = tu.tenant_id
-      JOIN users u ON u.id = tu.user_id
-      WHERE t.slug = $1 AND u.email = $2
-      LIMIT 1
-    `,
-    [tenantSlug, userEmail]
-  );
+  const tenantSlug = String(req.header('x-tenant-slug') || '').trim();
+  const userEmail = String(req.header('x-user-email') || '').trim().toLowerCase();
+  if (!tenantSlug || !userEmail) return null;
 
-  const row = result.rows[0];
-  if (!row) return null;
-
-  return {
-    tenant: {
-      id: row.tenantId,
-      slug: row.tenantSlug,
-      name: row.tenantName,
-      themePreset: row.themePreset,
-      status: row.tenantStatus
-    },
-    user: {
-      id: row.userId,
-      email: row.email,
-      firstName: row.firstName,
-      lastName: row.lastName
-    },
-    role: row.role
-  };
+  return resolveTenantContextByEmail(tenantSlug, userEmail);
 }
 
 export async function attachTenantContext(req: Request, res: Response, next: NextFunction) {
@@ -70,7 +28,7 @@ export async function attachTenantContext(req: Request, res: Response, next: Nex
       error: 'Unable to resolve tenant session.',
       acceptedHeaders: {
         tenantSlug: demoTenant.slug,
-        userEmail: demoUserEmail
+        userEmail: 'owner@example.com'
       }
     });
     return;

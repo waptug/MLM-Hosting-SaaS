@@ -4,7 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { allRoles } from '../../../packages/auth/src/model.js';
 import { tenantRoles } from '../../../packages/auth/src/model.js';
 import { attachTenantContext, requireRole } from './auth.js';
+import { acceptInvitation, authenticateUser, createAuthSession, revokeAuthSession } from './auth-state.js';
+import { parseCookies, sessionCookieName } from './auth-security.js';
 import { config } from './config.js';
+import { demoTenant, demoUserEmail, demoUserPassword } from './demo-data.js';
 import { businessRepository, businessRepositoryMode } from './repository-provider.js';
 import {
   addTenantUser,
@@ -29,10 +32,22 @@ export const app = express();
 
 app.use(
   cors({
-    origin: [`http://127.0.0.1:${config.webPort}`, `http://localhost:${config.webPort}`]
+    origin: [`http://127.0.0.1:${config.webPort}`, `http://localhost:${config.webPort}`],
+    credentials: true
   })
 );
 app.use(express.json());
+
+function setSessionCookie(res: express.Response, sessionToken: string) {
+  res.setHeader(
+    'Set-Cookie',
+    `${sessionCookieName}=${encodeURIComponent(sessionToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 14}`
+  );
+}
+
+function clearSessionCookie(res: express.Response) {
+  res.setHeader('Set-Cookie', `${sessionCookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+}
 
 app.get('/api/health', (_req, res) => {
   res.json({
@@ -95,11 +110,104 @@ app.get('/api/bootstrap', async (_req, res) => {
       storageProvider: config.storageProvider
     },
     nextBuildTargets: [
-      'password auth and invitations',
       'approval-based payout workflows',
-      'audit logging',
-      'automated integration tests'
+      'billing and subscriptions',
+      'password reset and invite delivery',
+      'background jobs'
     ]
+  });
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  const body = req.body || {};
+  const tenantSlug = String(body.tenantSlug || '').trim();
+  const email = String(body.email || '').trim().toLowerCase();
+  const password = String(body.password || '');
+
+  if (!tenantSlug || !email || !password) {
+    res.status(400).json({ error: 'Tenant slug, email, and password are required.' });
+    return;
+  }
+
+  const authenticated = await authenticateUser({ tenantSlug, email, password });
+  if (!authenticated) {
+    res.status(401).json({ error: 'Invalid tenant, email, or password.' });
+    return;
+  }
+
+  const session = await createAuthSession(authenticated);
+  setSessionCookie(res, session.sessionToken);
+  res.json({
+    ok: true,
+    tenantSlug,
+    email,
+    expiresAt: session.expiresAt
+  });
+});
+
+app.post('/api/auth/logout', async (req, res) => {
+  const cookies = parseCookies(req.header('cookie'));
+  const sessionToken = cookies[sessionCookieName];
+  if (sessionToken) {
+    await revokeAuthSession(sessionToken);
+  }
+
+  clearSessionCookie(res);
+  res.json({ ok: true });
+});
+
+app.post('/api/auth/accept-invitation', async (req, res) => {
+  const body = req.body || {};
+  const tenantSlug = String(body.tenantSlug || '').trim();
+  const invitationToken = String(body.invitationToken || '').trim();
+  const password = String(body.password || '');
+
+  if (!tenantSlug || !invitationToken || password.length < 8) {
+    res.status(400).json({
+      error: 'Tenant slug, invitation token, and a password with at least 8 characters are required.'
+    });
+    return;
+  }
+
+  try {
+    const accepted = await acceptInvitation({
+      tenantSlug,
+      invitationToken,
+      password
+    });
+    const session = await createAuthSession(accepted);
+    setSessionCookie(res, session.sessionToken);
+
+    await recordAuditLog({
+      actorEmail: accepted.email,
+      actionKey: 'tenant.invitation.accepted',
+      entityType: 'tenant_invitation',
+      entityId: accepted.userId,
+      summary: `Accepted invitation for ${accepted.email}.`,
+      details: {
+        tenantSlug: accepted.tenantSlug,
+        role: accepted.role
+      }
+    });
+
+    res.status(201).json({
+      ok: true,
+      tenantSlug: accepted.tenantSlug,
+      email: accepted.email,
+      expiresAt: session.expiresAt
+    });
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : 'Unable to accept invitation.'
+    });
+  }
+});
+
+app.get('/api/auth/demo-credentials', (_req, res) => {
+  res.json({
+    tenantSlug: demoTenant.slug,
+    email: demoUserEmail,
+    password: demoUserPassword
   });
 });
 

@@ -70,6 +70,13 @@ type TenantInvitation = {
   status: 'pending' | 'accepted' | 'revoked';
   expiresAt: string;
   createdAt: string;
+  acceptanceToken?: string;
+};
+
+type DemoCredentials = {
+  tenantSlug: string;
+  email: string;
+  password: string;
 };
 
 type SalesGroup = {
@@ -302,7 +309,8 @@ const manualSections: ManualSection[] = [
     summary: 'These notes matter for operating the current version correctly.',
     items: [
       'Tenant onboarding, tenant users, and the business domain are PostgreSQL-backed for the demo tenant.',
-      'Authentication, password setup, billing, and payout approvals are still pending production work.',
+      'Password login, invitation acceptance, and session cookies are now active for the local demo tenant.',
+      'Email delivery, password reset, billing, and payout approvals are still pending production work.',
       'Audit logging now captures key admin create actions and setup updates.',
       'For the current local environment, the app expects DATABASE_URL to point at the Postgres container.'
     ]
@@ -642,6 +650,7 @@ function InvitationsPanel({
                 <p>
                   {invitation.email} · {invitation.role} · invited by {invitation.invitedByEmail || 'system'}
                 </p>
+                {invitation.acceptanceToken ? <p>token: {invitation.acceptanceToken}</p> : null}
               </div>
               <span className={`status-pill ${invitation.status === 'accepted' ? 'done' : invitation.status === 'revoked' ? 'active' : 'next'}`}>
                 {invitation.status}
@@ -1453,10 +1462,195 @@ function AuditLogsPanel({ entries }: { entries: AuditLogEntry[] }) {
   );
 }
 
+function AuthPanel({
+  demoCredentials,
+  onAuthenticated
+}: {
+  demoCredentials: DemoCredentials | null;
+  onAuthenticated: () => void;
+}) {
+  const [mode, setMode] = React.useState<'login' | 'accept'>('login');
+  const [loginForm, setLoginForm] = React.useState({
+    tenantSlug: demoCredentials?.tenantSlug || '',
+    email: demoCredentials?.email || '',
+    password: demoCredentials?.password || ''
+  });
+  const [acceptForm, setAcceptForm] = React.useState({
+    tenantSlug: demoCredentials?.tenantSlug || '',
+    invitationToken: '',
+    password: ''
+  });
+  const [error, setError] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!demoCredentials) return;
+
+    setLoginForm({
+      tenantSlug: demoCredentials.tenantSlug,
+      email: demoCredentials.email,
+      password: demoCredentials.password
+    });
+    setAcceptForm((current) => ({ ...current, tenantSlug: demoCredentials.tenantSlug }));
+  }, [demoCredentials]);
+
+  async function submitLogin(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(loginForm)
+    });
+    const payload = await response.json();
+    setSaving(false);
+
+    if (!response.ok) {
+      setError(payload.error || 'Unable to sign in.');
+      return;
+    }
+
+    onAuthenticated();
+  }
+
+  async function submitAccept(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+
+    const response = await fetch('/api/auth/accept-invitation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(acceptForm)
+    });
+    const payload = await response.json();
+    setSaving(false);
+
+    if (!response.ok) {
+      setError(payload.error || 'Unable to accept invitation.');
+      return;
+    }
+
+    onAuthenticated();
+  }
+
+  return (
+    <section className="content-grid">
+      <article className="panel">
+        <div className="panel-heading">
+          <h2>Authentication</h2>
+          <p>Use tenant login or accept an invitation to create a real session.</p>
+        </div>
+        <div className="subtabs auth-tabs" aria-label="Authentication modes">
+          <button className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>
+            Login
+          </button>
+          <button className={mode === 'accept' ? 'active' : ''} onClick={() => setMode('accept')}>
+            Accept invitation
+          </button>
+        </div>
+        {mode === 'login' ? (
+          <form className="form-grid onboarding-form" onSubmit={submitLogin}>
+            <label>
+              Tenant slug
+              <input
+                value={loginForm.tenantSlug}
+                onChange={(event) => setLoginForm((current) => ({ ...current, tenantSlug: event.target.value }))}
+              />
+            </label>
+            <label>
+              Email
+              <input
+                value={loginForm.email}
+                onChange={(event) => setLoginForm((current) => ({ ...current, email: event.target.value }))}
+              />
+            </label>
+            <label className="full-width">
+              Password
+              <input
+                type="password"
+                value={loginForm.password}
+                onChange={(event) => setLoginForm((current) => ({ ...current, password: event.target.value }))}
+              />
+            </label>
+            {error ? <p className="error full-width">{error}</p> : null}
+            <div className="form-actions full-width">
+              <button type="submit" className="primary" disabled={saving}>
+                <ShieldCheck size={16} />
+                {saving ? 'Signing in' : 'Sign in'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <form className="form-grid onboarding-form" onSubmit={submitAccept}>
+            <label>
+              Tenant slug
+              <input
+                value={acceptForm.tenantSlug}
+                onChange={(event) => setAcceptForm((current) => ({ ...current, tenantSlug: event.target.value }))}
+              />
+            </label>
+            <label>
+              Invitation token
+              <input
+                value={acceptForm.invitationToken}
+                onChange={(event) => setAcceptForm((current) => ({ ...current, invitationToken: event.target.value }))}
+              />
+            </label>
+            <label className="full-width">
+              New password
+              <input
+                type="password"
+                value={acceptForm.password}
+                onChange={(event) => setAcceptForm((current) => ({ ...current, password: event.target.value }))}
+              />
+            </label>
+            {error ? <p className="error full-width">{error}</p> : null}
+            <div className="form-actions full-width">
+              <button type="submit" className="primary" disabled={saving}>
+                <MailPlus size={16} />
+                {saving ? 'Accepting' : 'Accept invitation'}
+              </button>
+            </div>
+          </form>
+        )}
+      </article>
+
+      <article className="panel">
+        <div className="panel-heading">
+          <h2>Local Demo Access</h2>
+          <p>Seeded credentials for the local Postgres tenant.</p>
+        </div>
+        {demoCredentials ? (
+          <dl className="session-list">
+            <div>
+              <dt>Tenant slug</dt>
+              <dd>{demoCredentials.tenantSlug}</dd>
+            </div>
+            <div>
+              <dt>Email</dt>
+              <dd>{demoCredentials.email}</dd>
+            </div>
+            <div>
+              <dt>Password</dt>
+              <dd>{demoCredentials.password}</dd>
+            </div>
+          </dl>
+        ) : (
+          <p className="lede">Demo credentials unavailable.</p>
+        )}
+      </article>
+    </section>
+  );
+}
+
 function App() {
   const [screen, setScreen] = React.useState<'overview' | 'onboarding' | 'users' | 'invitations' | 'sales-groups' | 'members' | 'customers' | 'orders' | 'commissions' | 'audit' | 'manual'>('overview');
   const [session, setSession] = React.useState<SessionPayload | null>(null);
   const [setup, setSetup] = React.useState<TenantSetup | null>(null);
+  const [demoCredentials, setDemoCredentials] = React.useState<DemoCredentials | null>(null);
   const [users, setUsers] = React.useState<TenantUser[]>([]);
   const [invitations, setInvitations] = React.useState<TenantInvitation[]>([]);
   const [tenantRoles, setTenantRoles] = React.useState<string[]>([]);
@@ -1468,6 +1662,24 @@ function App() {
   const [commissionSummaries, setCommissionSummaries] = React.useState<CommissionSummary[]>([]);
   const [payoutBatches, setPayoutBatches] = React.useState<PayoutBatch[]>([]);
   const [auditLogs, setAuditLogs] = React.useState<AuditLogEntry[]>([]);
+
+  async function fetchSessionOnly() {
+    const [sessionResponse, demoCredentialsResponse] = await Promise.all([
+      fetch('/api/session'),
+      fetch('/api/auth/demo-credentials')
+    ]);
+    const demoCredentialsPayload = await demoCredentialsResponse.json();
+    setDemoCredentials(demoCredentialsPayload);
+
+    if (!sessionResponse.ok) {
+      setSession(null);
+      return false;
+    }
+
+    const sessionPayload = await sessionResponse.json();
+    setSession(sessionPayload);
+    return true;
+  }
 
   async function reloadAuditLogs() {
     const response = await fetch('/api/admin/audit-logs');
@@ -1489,8 +1701,24 @@ function App() {
   }
 
   async function loadData() {
+    const sessionResolved = await fetchSessionOnly();
+    if (!sessionResolved) {
+      setSetup(null);
+      setUsers([]);
+      setInvitations([]);
+      setTenantRoles([]);
+      setSalesGroups([]);
+      setMembers([]);
+      setCustomers([]);
+      setProducts([]);
+      setOrders([]);
+      setCommissionSummaries([]);
+      setPayoutBatches([]);
+      setAuditLogs([]);
+      return;
+    }
+
     const [
-      sessionResponse,
       onboardingResponse,
       usersResponse,
       invitationsResponse,
@@ -1504,7 +1732,6 @@ function App() {
       payoutsResponse,
       auditLogsResponse
     ] = await Promise.all([
-      fetch('/api/session'),
       fetch('/api/admin/onboarding'),
       fetch('/api/admin/tenant-users'),
       fetch('/api/admin/invitations'),
@@ -1519,7 +1746,6 @@ function App() {
       fetch('/api/admin/audit-logs')
     ]);
     const [
-      sessionPayload,
       onboardingPayload,
       usersPayload,
       invitationsPayload,
@@ -1533,7 +1759,6 @@ function App() {
       payoutsPayload,
       auditLogsPayload
     ] = await Promise.all([
-      sessionResponse.json(),
       onboardingResponse.json(),
       usersResponse.json(),
       invitationsResponse.json(),
@@ -1547,7 +1772,6 @@ function App() {
       payoutsResponse.json(),
       auditLogsResponse.json()
     ]);
-    setSession(sessionPayload);
     setSetup(onboardingPayload.setup);
     setUsers(usersPayload.users);
     setInvitations(invitationsPayload.invitations);
@@ -1566,8 +1790,14 @@ function App() {
     loadData().catch(() => {
       setSession(null);
       setSetup(null);
+      setDemoCredentials(null);
     });
   }, []);
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    await loadData();
+  }
 
   return (
     <main className="app-shell">
@@ -1581,8 +1811,8 @@ function App() {
         </div>
         <section className="hero-panel" aria-label="Current milestone">
           <h2>Current Focus</h2>
-          <strong>Tenant onboarding and access control</strong>
-          <p>Move from static foundation into actual tenant admin workflows and protected setup management.</p>
+          <strong>Real authentication and session handling</strong>
+          <p>Move from demo identity shortcuts into password-backed sessions and invitation acceptance.</p>
         </section>
       </header>
 
@@ -1597,7 +1827,7 @@ function App() {
         </article>
         <article className="stat-card">
           <span>Current status</span>
-          <strong>{setup?.status || 'draft'}</strong>
+          <strong>{setup?.status || 'signed out'}</strong>
         </article>
         <article className="stat-card">
           <span>Theme preset</span>
@@ -1605,6 +1835,26 @@ function App() {
         </article>
       </section>
 
+      {session ? (
+        <section className="panel auth-status-panel">
+          <div className="panel-heading">
+            <h2>Authenticated Session</h2>
+            <p>
+              {session.user.firstName} {session.user.lastName} · {session.role} · {session.tenant.slug}
+            </p>
+          </div>
+          <div className="form-actions">
+            <button type="button" onClick={() => logout()}>
+              <ShieldCheck size={16} />
+              Sign out
+            </button>
+          </div>
+        </section>
+      ) : (
+        <AuthPanel demoCredentials={demoCredentials} onAuthenticated={() => loadData().catch(() => undefined)} />
+      )}
+
+      {session ? (
       <nav className="subtabs" aria-label="Admin sections">
         <button className={screen === 'overview' ? 'active' : ''} onClick={() => setScreen('overview')}>
           <LayoutDashboard size={16} />
@@ -1651,8 +1901,9 @@ function App() {
           Manual
         </button>
       </nav>
+      ) : null}
 
-      {screen === 'overview' ? (
+      {session && screen === 'overview' ? (
         <>
           <section className="content-grid">
             <article className="panel">
@@ -1694,7 +1945,7 @@ function App() {
         </>
       ) : null}
 
-      {screen === 'onboarding' ? (
+      {session && screen === 'onboarding' ? (
         <OnboardingPanel
           setup={setup}
           onSaved={(nextSetup) => {
@@ -1703,7 +1954,7 @@ function App() {
           }}
         />
       ) : null}
-      {screen === 'users' ? (
+      {session && screen === 'users' ? (
         <UsersPanel
           users={users}
           tenantRoles={tenantRoles}
@@ -1716,7 +1967,7 @@ function App() {
           }}
         />
       ) : null}
-      {screen === 'invitations' ? (
+      {session && screen === 'invitations' ? (
         <InvitationsPanel
           invitations={invitations}
           tenantRoles={tenantRoles}
@@ -1726,7 +1977,7 @@ function App() {
           }}
         />
       ) : null}
-      {screen === 'sales-groups' ? (
+      {session && screen === 'sales-groups' ? (
         <SalesGroupsPanel
           salesGroups={salesGroups}
           onGroupAdded={(group) => {
@@ -1735,7 +1986,7 @@ function App() {
           }}
         />
       ) : null}
-      {screen === 'members' ? (
+      {session && screen === 'members' ? (
         <MembersPanel
           members={members}
           salesGroups={salesGroups}
@@ -1745,7 +1996,7 @@ function App() {
           }}
         />
       ) : null}
-      {screen === 'customers' ? (
+      {session && screen === 'customers' ? (
         <CustomersPanel
           customers={customers}
           members={members}
@@ -1757,7 +2008,7 @@ function App() {
           }}
         />
       ) : null}
-      {screen === 'orders' ? (
+      {session && screen === 'orders' ? (
         <OrdersPanel
           orders={orders}
           products={products}
@@ -1770,11 +2021,11 @@ function App() {
           }}
         />
       ) : null}
-      {screen === 'commissions' ? (
+      {session && screen === 'commissions' ? (
         <CommissionsPanel summaries={commissionSummaries} payouts={payoutBatches} />
       ) : null}
-      {screen === 'audit' ? <AuditLogsPanel entries={auditLogs} /> : null}
-      {screen === 'manual' ? <ManualPanel /> : null}
+      {session && screen === 'audit' ? <AuditLogsPanel entries={auditLogs} /> : null}
+      {session && screen === 'manual' ? <ManualPanel /> : null}
     </main>
   );
 }

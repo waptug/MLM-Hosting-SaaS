@@ -115,6 +115,7 @@ export type TenantInvitation = {
   status: 'pending' | 'accepted' | 'revoked';
   expiresAt: string;
   createdAt: string;
+  acceptanceToken?: string;
 };
 
 type DatabasePool = {
@@ -489,5 +490,8 @@ export async function createTenantInvitation(input: {
   );
 
   const invitations = await listTenantInvitations();
-  return invitations.find((invitation) => invitation.id === invitationId)!;
+  return {
+    ...invitations.find((invitation) => invitation.id === invitationId)!,
+    acceptanceToken: invitationToken
+  };
 }

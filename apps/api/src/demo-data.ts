@@ -13,3 +13,4 @@ export const demoTenant: {
 };
 
 export const demoUserEmail = 'owner@example.com';
+export const demoUserPassword = 'demo-password';
