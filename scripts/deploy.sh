@@ -132,11 +132,18 @@ else
   remote_command+="$publish_command"
 fi
 
-echo "Syncing release bundle and publishing web artifact on ${remote_target}"
+echo "Syncing release bundle to ${remote_target}:${DEPLOY_REMOTE_DIR}"
+rsync_ssh=(ssh -p "$DEPLOY_SSH_PORT" -o StrictHostKeyChecking=accept-new)
 if [[ -n "$DEPLOY_SSH_PASSWORD" ]]; then
-  tar -czpf - -C "$release_dir" . | env DISPLAY=none SSH_ASKPASS="$temp_askpass" SSH_ASKPASS_REQUIRE=force setsid -w ssh -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password -o PubkeyAuthentication=no "${SSH_ARGS[@]}" "$remote_target" "$remote_command"
+  rsync_ssh+=(-o PreferredAuthentications=password -o PubkeyAuthentication=no)
+fi
+rsync -az --delete -e "${rsync_ssh[*]}" "$release_dir/" "$remote_target:$DEPLOY_REMOTE_DIR/"
+
+echo "Running remote post-sync and publishing web artifact on ${remote_target}"
+if [[ -n "$DEPLOY_SSH_PASSWORD" ]]; then
+  env DISPLAY=none SSH_ASKPASS="$temp_askpass" SSH_ASKPASS_REQUIRE=force setsid -w ssh -p "$DEPLOY_SSH_PORT" -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password -o PubkeyAuthentication=no "$remote_target" "$remote_command"
 else
-  tar -czpf - -C "$release_dir" . | ssh -p "$DEPLOY_SSH_PORT" "$remote_target" "$remote_command"
+  ssh -p "$DEPLOY_SSH_PORT" "$remote_target" "$remote_command"
 fi
 
 echo "Deployment complete."
