@@ -35,6 +35,8 @@ Current starter migration:
 - [0007_tenant_invitations.sql](./0007_tenant_invitations.sql)
 - [0008_auth_sessions.sql](./0008_auth_sessions.sql)
 - [0009_demo_password_hashes.sql](./0009_demo_password_hashes.sql)
+- [0010_payout_batches.sql](./0010_payout_batches.sql)
+- [0011_demo_payout_batches.sql](./0011_demo_payout_batches.sql)
 
 Core entity coverage now includes:
 
@@ -46,6 +48,7 @@ Core entity coverage now includes:
 - `audit_logs`
 - `tenant_invitations`
 - `auth_sessions`
+- `payout_batches`
 
 Current runtime note:
 

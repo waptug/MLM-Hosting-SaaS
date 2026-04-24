@@ -230,6 +230,13 @@ select {
   padding: 12px;
 }
 
+.batch-actions {
+  align-items: flex-end;
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
 .user-row p {
   color: #5e6a64;
   margin: 4px 0 0;

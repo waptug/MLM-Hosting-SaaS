@@ -19,6 +19,8 @@ function assert(condition, message) {
 let createdSalesGroupId = null;
 let createdInvitationId = null;
 let createdAcceptedUserEmail = null;
+let payoutBatchStateResetNeeded = false;
+const payoutBatchId = '00000000-0000-0000-0000-000000000601';
 const uniqueSuffix = randomUUID().slice(0, 8).toUpperCase();
 let sessionCookie = '';
 let invitedSessionCookie = '';
@@ -211,6 +213,40 @@ try {
     'Audit log did not capture the created invitation.'
   );
 
+  const approvePayout = await invoke('POST', `/api/admin/payouts/${payoutBatchId}/approve`, {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(approvePayout.status === 200, 'Payout approve request failed.');
+  assert(approvePayout.body?.batch?.status === 'approved', 'Payout batch did not move to approved.');
+  payoutBatchStateResetNeeded = true;
+
+  const payPayout = await invoke('POST', `/api/admin/payouts/${payoutBatchId}/pay`, {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(payPayout.status === 200, 'Payout pay request failed.');
+  assert(payPayout.body?.batch?.status === 'paid', 'Payout batch did not move to paid.');
+
+  const auditLogsAfterPayout = await invoke('GET', '/api/admin/audit-logs', {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(auditLogsAfterPayout.status === 200, 'Audit log list after payout actions failed.');
+  assert(
+    Array.isArray(auditLogsAfterPayout.body?.entries) &&
+      auditLogsAfterPayout.body.entries.some(
+        (entry) => entry.actionKey === 'payout_batch.approved' && entry.entityId === payoutBatchId
+      ) &&
+      auditLogsAfterPayout.body.entries.some(
+        (entry) => entry.actionKey === 'payout_batch.paid' && entry.entityId === payoutBatchId
+      ),
+    'Audit log did not capture payout approval and payment.'
+  );
+
   const acceptInvitation = await invoke('POST', '/api/auth/accept-invitation', {
     headers: {
       'content-type': 'application/json'
@@ -273,6 +309,7 @@ try {
           'sales group create and list',
           'audit log capture',
           'invitation create and list',
+          'payout approve and pay',
           'invitation acceptance and invited login',
           'logout'
         ]
@@ -282,6 +319,24 @@ try {
     )
   );
 } finally {
+  if (payoutBatchStateResetNeeded) {
+    await pool.query(
+      `
+        UPDATE payout_batches
+        SET
+          status = 'draft',
+          approved_at = NULL,
+          approved_by_user_id = NULL,
+          paid_at = NULL,
+          paid_by_user_id = NULL,
+          updated_at = NOW()
+        WHERE id = $1
+      `,
+      [payoutBatchId]
+    );
+    await pool.query('DELETE FROM audit_logs WHERE entity_type = $1 AND entity_id = $2', ['payout_batch', payoutBatchId]);
+  }
+
   if (createdAcceptedUserEmail) {
     await pool.query('DELETE FROM tenant_users WHERE user_id IN (SELECT id FROM users WHERE email = $1)', [createdAcceptedUserEmail]);
     await pool.query('DELETE FROM users WHERE email = $1', [createdAcceptedUserEmail]);

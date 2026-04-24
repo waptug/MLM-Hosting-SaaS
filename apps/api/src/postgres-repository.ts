@@ -382,27 +382,99 @@ async function listCommissionSummaryQuery(pool: DbPool) {
 }
 
 async function listPayoutBatchesQuery(pool: DbPool) {
-  const summaries = (await listCommissionSummaryQuery(pool)).filter((entry) => entry.totalCommission > 0);
-  const totalAmount = summaries.reduce((sum, entry) => sum + entry.totalCommission, 0);
+  const { tenantId } = await tenantContext(pool);
+  const result = await pool.query<{
+    id: string;
+    periodLabel: string;
+    scheduledFor: string;
+    status: 'draft' | 'approved' | 'paid';
+    payeeCount: number;
+    totalAmount: string;
+    approvedAt: string | null;
+    approvedByEmail: string | null;
+    paidAt: string | null;
+    paidByEmail: string | null;
+  }>(
+    `
+      SELECT
+        batch.id::text AS id,
+        batch.period_label AS "periodLabel",
+        batch.scheduled_for::text AS "scheduledFor",
+        batch.status,
+        batch.payee_count AS "payeeCount",
+        batch.total_amount::text AS "totalAmount",
+        batch.approved_at::text AS "approvedAt",
+        approver.email AS "approvedByEmail",
+        batch.paid_at::text AS "paidAt",
+        payer.email AS "paidByEmail"
+      FROM payout_batches batch
+      LEFT JOIN users approver ON approver.id = batch.approved_by_user_id
+      LEFT JOIN users payer ON payer.id = batch.paid_by_user_id
+      WHERE batch.tenant_id = $1
+      ORDER BY batch.scheduled_for DESC
+    `,
+    [tenantId]
+  );
 
-  return [
-    {
-      id: 'payout_2026_04',
-      periodLabel: 'April 2026',
-      scheduledFor: '2026-04-30',
-      status: 'draft',
-      payeeCount: summaries.length,
-      totalAmount
-    },
-    {
-      id: 'payout_2026_03',
-      periodLabel: 'March 2026',
-      scheduledFor: '2026-03-31',
-      status: 'paid',
-      payeeCount: 2,
-      totalAmount: 112.5
-    }
-  ] satisfies PayoutBatch[];
+  return result.rows.map((row) => ({
+    id: row.id,
+    periodLabel: row.periodLabel,
+    scheduledFor: row.scheduledFor,
+    status: row.status,
+    payeeCount: Number(row.payeeCount || 0),
+    totalAmount: Number(row.totalAmount || '0'),
+    approvedAt: row.approvedAt,
+    approvedByEmail: row.approvedByEmail || '',
+    paidAt: row.paidAt,
+    paidByEmail: row.paidByEmail || ''
+  })) satisfies PayoutBatch[];
+}
+
+async function updatePayoutBatchStatus(
+  pool: DbPool,
+  input: { batchId: string; actorEmail: string; status: 'approved' | 'paid' }
+) {
+  const { tenantId } = await tenantContext(pool);
+  const actorUserId = await resolveUserIdByEmail(pool, input.actorEmail);
+
+  if (!actorUserId) {
+    throw new Error(`Unable to resolve payout actor ${input.actorEmail}.`);
+  }
+
+  const current = await pool.query<{ status: 'draft' | 'approved' | 'paid' }>(
+    'SELECT status FROM payout_batches WHERE tenant_id = $1 AND id = $2',
+    [tenantId, input.batchId]
+  );
+  const currentStatus = current.rows[0]?.status;
+  if (!currentStatus) {
+    throw new Error('Payout batch not found.');
+  }
+
+  if (input.status === 'approved' && currentStatus !== 'draft') {
+    throw new Error('Only draft payout batches can be approved.');
+  }
+
+  if (input.status === 'paid' && currentStatus !== 'approved') {
+    throw new Error('Only approved payout batches can be marked paid.');
+  }
+
+  await pool.query(
+    `
+      UPDATE payout_batches
+      SET
+        status = $3,
+        approved_at = CASE WHEN $3 = 'approved' THEN NOW() ELSE approved_at END,
+        approved_by_user_id = CASE WHEN $3 = 'approved' THEN $4 ELSE approved_by_user_id END,
+        paid_at = CASE WHEN $3 = 'paid' THEN NOW() ELSE paid_at END,
+        paid_by_user_id = CASE WHEN $3 = 'paid' THEN $4 ELSE paid_by_user_id END,
+        updated_at = NOW()
+      WHERE tenant_id = $1 AND id = $2
+    `,
+    [tenantId, input.batchId, input.status, actorUserId]
+  );
+
+  const batches = await listPayoutBatchesQuery(pool);
+  return batches.find((batch) => batch.id === input.batchId)!;
 }
 
 export const postgresBusinessRepository: BusinessRepository = {
@@ -552,5 +624,13 @@ export const postgresBusinessRepository: BusinessRepository = {
   async listPayoutBatches() {
     const pool = await getPool();
     return listPayoutBatchesQuery(pool);
+  },
+  async approvePayoutBatch(batchId, actorEmail) {
+    const pool = await getPool();
+    return updatePayoutBatchStatus(pool, { batchId, actorEmail, status: 'approved' });
+  },
+  async markPayoutBatchPaid(batchId, actorEmail) {
+    const pool = await getPool();
+    return updatePayoutBatchStatus(pool, { batchId, actorEmail, status: 'paid' });
   }
 };

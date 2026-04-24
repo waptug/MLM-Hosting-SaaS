@@ -160,6 +160,10 @@ type PayoutBatch = {
   status: 'draft' | 'approved' | 'paid';
   payeeCount: number;
   totalAmount: number;
+  approvedAt?: string | null;
+  approvedByEmail?: string;
+  paidAt?: string | null;
+  paidByEmail?: string;
 };
 
 type AuditLogEntry = {
@@ -1325,10 +1329,12 @@ function OrdersPanel({
 
 function CommissionsPanel({
   summaries,
-  payouts
+  payouts,
+  onBatchUpdated
 }: {
   summaries: CommissionSummary[];
   payouts: PayoutBatch[];
+  onBatchUpdated: (batch: PayoutBatch) => void;
 }) {
   const totals = summaries.reduce(
     (accumulator, summary) => ({
@@ -1344,6 +1350,26 @@ function CommissionsPanel({
       totalCommission: 0
     }
   );
+  const [savingBatchId, setSavingBatchId] = React.useState('');
+  const [error, setError] = React.useState('');
+
+  async function runBatchAction(batchId: string, action: 'approve' | 'pay') {
+    setSavingBatchId(batchId);
+    setError('');
+
+    const response = await fetch(`/api/admin/payouts/${batchId}/${action}`, {
+      method: 'POST'
+    });
+    const payload = await response.json();
+    setSavingBatchId('');
+
+    if (!response.ok) {
+      setError(payload.error || `Unable to ${action} payout batch.`);
+      return;
+    }
+
+    onBatchUpdated(payload.batch);
+  }
 
   return (
     <>
@@ -1393,6 +1419,7 @@ function CommissionsPanel({
             <h2>Payout Batches</h2>
             <p>Draft and historical payout periods visible to finance and tenant admins.</p>
           </div>
+          {error ? <p className="error">{error}</p> : null}
           <div className="user-list">
             {payouts.map((batch) => (
               <div className="user-row" key={batch.id}>
@@ -1401,10 +1428,39 @@ function CommissionsPanel({
                   <p>
                     {batch.payeeCount} payees · scheduled {batch.scheduledFor}
                   </p>
+                  <p>
+                    {batch.status === 'approved' && batch.approvedByEmail
+                      ? `approved by ${batch.approvedByEmail}`
+                      : batch.status === 'paid' && batch.paidByEmail
+                        ? `paid by ${batch.paidByEmail}`
+                        : 'awaiting finance action'}
+                  </p>
                 </div>
-                <span className={`status-pill ${batch.status === 'paid' ? 'done' : batch.status === 'approved' ? 'active' : 'next'}`}>
-                  ${batch.totalAmount.toFixed(2)}
-                </span>
+                <div className="batch-actions">
+                  <span className={`status-pill ${batch.status === 'paid' ? 'done' : batch.status === 'approved' ? 'active' : 'next'}`}>
+                    ${batch.totalAmount.toFixed(2)}
+                  </span>
+                  {batch.status === 'draft' ? (
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={savingBatchId === batch.id}
+                      onClick={() => runBatchAction(batch.id, 'approve')}
+                    >
+                      {savingBatchId === batch.id ? 'Saving' : 'Approve'}
+                    </button>
+                  ) : null}
+                  {batch.status === 'approved' ? (
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={savingBatchId === batch.id}
+                      onClick={() => runBatchAction(batch.id, 'pay')}
+                    >
+                      {savingBatchId === batch.id ? 'Saving' : 'Mark paid'}
+                    </button>
+                  ) : null}
+                </div>
               </div>
             ))}
           </div>
@@ -2022,7 +2078,14 @@ function App() {
         />
       ) : null}
       {session && screen === 'commissions' ? (
-        <CommissionsPanel summaries={commissionSummaries} payouts={payoutBatches} />
+        <CommissionsPanel
+          summaries={commissionSummaries}
+          payouts={payoutBatches}
+          onBatchUpdated={(batch) => {
+            setPayoutBatches((current) => current.map((entry) => (entry.id === batch.id ? batch : entry)));
+            reloadAuditLogs().catch(() => undefined);
+          }}
+        />
       ) : null}
       {session && screen === 'audit' ? <AuditLogsPanel entries={auditLogs} /> : null}
       {session && screen === 'manual' ? <ManualPanel /> : null}

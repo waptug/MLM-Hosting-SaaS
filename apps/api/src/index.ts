@@ -673,6 +673,62 @@ app.get(
   }
 );
 
+app.post(
+  '/api/admin/payouts/:id/approve',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'finance_manager']),
+  async (req, res) => {
+    const batchId = String(req.params.id || '');
+    try {
+      const batch = await businessRepository.approvePayoutBatch(batchId, req.tenantContext!.user.email);
+      await recordAuditLog({
+        actorEmail: req.tenantContext?.user.email,
+        actionKey: 'payout_batch.approved',
+        entityType: 'payout_batch',
+        entityId: batch.id,
+        summary: `Approved payout batch ${batch.periodLabel}.`,
+        details: {
+          status: batch.status,
+          totalAmount: batch.totalAmount
+        }
+      });
+      res.json({ batch });
+    } catch (error) {
+      res.status(400).json({
+        error: error instanceof Error ? error.message : 'Unable to approve payout batch.'
+      });
+    }
+  }
+);
+
+app.post(
+  '/api/admin/payouts/:id/pay',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'finance_manager']),
+  async (req, res) => {
+    const batchId = String(req.params.id || '');
+    try {
+      const batch = await businessRepository.markPayoutBatchPaid(batchId, req.tenantContext!.user.email);
+      await recordAuditLog({
+        actorEmail: req.tenantContext?.user.email,
+        actionKey: 'payout_batch.paid',
+        entityType: 'payout_batch',
+        entityId: batch.id,
+        summary: `Marked payout batch ${batch.periodLabel} paid.`,
+        details: {
+          status: batch.status,
+          totalAmount: batch.totalAmount
+        }
+      });
+      res.json({ batch });
+    } catch (error) {
+      res.status(400).json({
+        error: error instanceof Error ? error.message : 'Unable to mark payout batch paid.'
+      });
+    }
+  }
+);
+
 app.get(
   '/api/admin/audit-logs',
   attachTenantContext,

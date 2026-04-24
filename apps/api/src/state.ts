@@ -93,6 +93,10 @@ export type PayoutBatch = {
   status: 'draft' | 'approved' | 'paid';
   payeeCount: number;
   totalAmount: number;
+  approvedAt?: string | null;
+  approvedByEmail?: string;
+  paidAt?: string | null;
+  paidByEmail?: string;
 };
 
 export type AuditLogEntry = {
