@@ -95,6 +95,16 @@ export type PayoutBatch = {
   totalAmount: number;
 };
 
+export type AuditLogEntry = {
+  id: string;
+  actorEmail: string;
+  actionKey: string;
+  entityType: string;
+  entityId: string;
+  summary: string;
+  createdAt: string;
+};
+
 type DatabasePool = {
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
@@ -299,4 +309,77 @@ export async function addTenantUser(input: {
 
   const users = await listTenantUsers();
   return users.find((user) => user.email === normalizedEmail)!;
+}
+
+export async function listAuditLogs(limit = 50): Promise<AuditLogEntry[]> {
+  const pool = await getPool();
+  const id = await tenantId(pool);
+  const result = await pool.query<AuditLogEntry>(
+    `
+      SELECT
+        id::text AS id,
+        actor_email AS "actorEmail",
+        action_key AS "actionKey",
+        entity_type AS "entityType",
+        entity_id AS "entityId",
+        summary,
+        created_at::text AS "createdAt"
+      FROM audit_logs
+      WHERE tenant_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2
+    `,
+    [id, limit]
+  );
+
+  return result.rows;
+}
+
+export async function recordAuditLog(input: {
+  actorEmail?: string | null;
+  actionKey: string;
+  entityType: string;
+  entityId?: string | null;
+  summary: string;
+  details?: Record<string, unknown>;
+}) {
+  const pool = await getPool();
+  const id = await tenantId(pool);
+  const normalizedActorEmail = (input.actorEmail || '').trim().toLowerCase();
+
+  let actorUserId: string | null = null;
+  if (normalizedActorEmail) {
+    const actorResult = await pool.query<{ id: string }>('SELECT id::text AS id FROM users WHERE email = $1', [
+      normalizedActorEmail
+    ]);
+    actorUserId = actorResult.rows[0]?.id || null;
+  }
+
+  await pool.query(
+    `
+      INSERT INTO audit_logs (
+        id,
+        tenant_id,
+        actor_user_id,
+        actor_email,
+        action_key,
+        entity_type,
+        entity_id,
+        summary,
+        details_json
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+    `,
+    [
+      randomUUID(),
+      id,
+      actorUserId,
+      normalizedActorEmail,
+      input.actionKey,
+      input.entityType,
+      input.entityId || '',
+      input.summary,
+      JSON.stringify(input.details || {})
+    ]
+  );
 }

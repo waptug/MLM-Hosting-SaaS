@@ -9,7 +9,9 @@ import { businessRepository, businessRepositoryMode } from './repository-provide
 import {
   addTenantUser,
   getTenantSetup,
+  listAuditLogs,
   listTenantUsers,
+  recordAuditLog,
   updateTenantSetup
 } from './state.js';
 
@@ -126,7 +128,21 @@ app.put(
       primaryDomain: String(payload.primaryDomain || '').trim() || currentSetup.primaryDomain
     });
 
-    res.json({ setup: await nextSetup });
+    const setup = await nextSetup;
+    await recordAuditLog({
+      actorEmail: req.tenantContext?.user.email,
+      actionKey: 'tenant.setup.updated',
+      entityType: 'tenant',
+      entityId: req.tenantContext?.tenant.id,
+      summary: `Updated tenant setup for ${setup.name}.`,
+      details: {
+        slug: setup.slug,
+        status: setup.status,
+        themePreset: setup.themePreset
+      }
+    });
+
+    res.json({ setup });
   }
 );
 
@@ -192,6 +208,18 @@ app.post(
       role: role as (typeof tenantRoles)[number]
     });
 
+    await recordAuditLog({
+      actorEmail: req.tenantContext?.user.email,
+      actionKey: 'tenant.user.created',
+      entityType: 'tenant_user',
+      entityId: user.id,
+      summary: `Added tenant user ${user.email} as ${user.role}.`,
+      details: {
+        email: user.email,
+        role: user.role
+      }
+    });
+
     res.status(201).json({ user });
   }
 );
@@ -232,6 +260,18 @@ app.post(
       managerEmail,
       status,
       notes
+    });
+
+    await recordAuditLog({
+      actorEmail: req.tenantContext?.user.email,
+      actionKey: 'sales_group.created',
+      entityType: 'sales_group',
+      entityId: salesGroup.id,
+      summary: `Created sales group ${salesGroup.name}.`,
+      details: {
+        code: salesGroup.code,
+        status: salesGroup.status
+      }
     });
 
     res.status(201).json({ salesGroup });
@@ -278,6 +318,19 @@ app.post(
       roleTitle,
       status,
       sponsorMemberId
+    });
+
+    await recordAuditLog({
+      actorEmail: req.tenantContext?.user.email,
+      actionKey: 'member.created',
+      entityType: 'member',
+      entityId: member.id,
+      summary: `Created member ${member.firstName} ${member.lastName}.`,
+      details: {
+        email: member.email,
+        salesGroupId: member.salesGroupId,
+        status: member.status
+      }
     });
 
     res.status(201).json({ member });
@@ -335,6 +388,18 @@ app.post(
       monthlyRevenue: Number.isFinite(monthlyRevenue) ? monthlyRevenue : 0,
       source,
       notes
+    });
+
+    await recordAuditLog({
+      actorEmail: req.tenantContext?.user.email,
+      actionKey: 'customer.created',
+      entityType: 'customer',
+      entityId: customer.id,
+      summary: `Created customer ${customer.companyName}.`,
+      details: {
+        ownerMemberId: customer.ownerMemberId,
+        status: customer.status
+      }
     });
 
     res.status(201).json({ customer });
@@ -405,6 +470,19 @@ app.post(
       placedAt
     });
 
+    await recordAuditLog({
+      actorEmail: req.tenantContext?.user.email,
+      actionKey: 'order.created',
+      entityType: 'order',
+      entityId: order.id,
+      summary: `Created ${order.status} order for ${order.customerName}.`,
+      details: {
+        productId: order.productId,
+        sellingMemberId: order.sellingMemberId,
+        totalAmount: order.totalAmount
+      }
+    });
+
     res.status(201).json({ order });
   }
 );
@@ -424,6 +502,15 @@ app.get(
   requireRole(['tenant_owner', 'tenant_manager', 'finance_manager']),
   async (_req, res) => {
     res.json({ batches: await businessRepository.listPayoutBatches() });
+  }
+);
+
+app.get(
+  '/api/admin/audit-logs',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager', 'finance_manager']),
+  async (_req, res) => {
+    res.json({ entries: await listAuditLogs() });
   }
 );
 

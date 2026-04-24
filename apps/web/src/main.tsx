@@ -10,6 +10,7 @@ import {
   ListTree,
   Network,
   Palette,
+  ScrollText,
   Settings2,
   ShieldCheck,
   ShoppingCart,
@@ -140,6 +141,16 @@ type PayoutBatch = {
   status: 'draft' | 'approved' | 'paid';
   payeeCount: number;
   totalAmount: number;
+};
+
+type AuditLogEntry = {
+  id: string;
+  actorEmail: string;
+  actionKey: string;
+  entityType: string;
+  entityId: string;
+  summary: string;
+  createdAt: string;
 };
 
 type ManualSection = {
@@ -278,9 +289,9 @@ const manualSections: ManualSection[] = [
     title: '7. Current Build Limits',
     summary: 'These notes matter for operating the current version correctly.',
     items: [
-      'Tenant onboarding and tenant user management still rely on demo state and are not yet persisted to PostgreSQL.',
-      'The business domain is now PostgreSQL-backed for groups, members, customers, products, orders, commissions, and payouts.',
-      'Authentication, invitations, billing, payout approvals, and audit logging are still pending production work.',
+      'Tenant onboarding, tenant users, and the business domain are PostgreSQL-backed for the demo tenant.',
+      'Authentication, invitations, billing, and payout approvals are still pending production work.',
+      'Audit logging now captures key admin create actions and setup updates.',
       'For the current local environment, the app expects DATABASE_URL to point at the Postgres container.'
     ]
   }
@@ -1284,8 +1295,32 @@ function ManualPanel() {
   );
 }
 
+function AuditLogsPanel({ entries }: { entries: AuditLogEntry[] }) {
+  return (
+    <section className="panel">
+      <div className="panel-heading">
+        <h2>Audit Log</h2>
+        <p>Recent admin actions recorded for the current tenant.</p>
+      </div>
+      <div className="user-list">
+        {entries.map((entry) => (
+          <div className="user-row" key={entry.id}>
+            <div>
+              <strong>{entry.summary}</strong>
+              <p>
+                {entry.actorEmail || 'system'} · {entry.actionKey} · {entry.entityType}
+              </p>
+            </div>
+            <span className="status-pill next">{new Date(entry.createdAt).toLocaleDateString()}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function App() {
-  const [screen, setScreen] = React.useState<'overview' | 'onboarding' | 'users' | 'sales-groups' | 'members' | 'customers' | 'orders' | 'commissions' | 'manual'>('overview');
+  const [screen, setScreen] = React.useState<'overview' | 'onboarding' | 'users' | 'sales-groups' | 'members' | 'customers' | 'orders' | 'commissions' | 'audit' | 'manual'>('overview');
   const [session, setSession] = React.useState<SessionPayload | null>(null);
   const [setup, setSetup] = React.useState<TenantSetup | null>(null);
   const [users, setUsers] = React.useState<TenantUser[]>([]);
@@ -1297,6 +1332,13 @@ function App() {
   const [orders, setOrders] = React.useState<Order[]>([]);
   const [commissionSummaries, setCommissionSummaries] = React.useState<CommissionSummary[]>([]);
   const [payoutBatches, setPayoutBatches] = React.useState<PayoutBatch[]>([]);
+  const [auditLogs, setAuditLogs] = React.useState<AuditLogEntry[]>([]);
+
+  async function reloadAuditLogs() {
+    const response = await fetch('/api/admin/audit-logs');
+    const payload = await response.json();
+    setAuditLogs(payload.entries);
+  }
 
   async function reloadFinanceData() {
     const [commissionsResponse, payoutsResponse] = await Promise.all([
@@ -1323,7 +1365,8 @@ function App() {
       productsResponse,
       ordersResponse,
       commissionsResponse,
-      payoutsResponse
+      payoutsResponse,
+      auditLogsResponse
     ] = await Promise.all([
       fetch('/api/session'),
       fetch('/api/admin/onboarding'),
@@ -1335,7 +1378,8 @@ function App() {
       fetch('/api/admin/products'),
       fetch('/api/admin/orders'),
       fetch('/api/admin/commissions'),
-      fetch('/api/admin/payouts')
+      fetch('/api/admin/payouts'),
+      fetch('/api/admin/audit-logs')
     ]);
     const [
       sessionPayload,
@@ -1348,7 +1392,8 @@ function App() {
       productsPayload,
       ordersPayload,
       commissionsPayload,
-      payoutsPayload
+      payoutsPayload,
+      auditLogsPayload
     ] = await Promise.all([
       sessionResponse.json(),
       onboardingResponse.json(),
@@ -1360,7 +1405,8 @@ function App() {
       productsResponse.json(),
       ordersResponse.json(),
       commissionsResponse.json(),
-      payoutsResponse.json()
+      payoutsResponse.json(),
+      auditLogsResponse.json()
     ]);
     setSession(sessionPayload);
     setSetup(onboardingPayload.setup);
@@ -1373,6 +1419,7 @@ function App() {
     setOrders(ordersPayload.orders);
     setCommissionSummaries(commissionsPayload.summaries);
     setPayoutBatches(payoutsPayload.batches);
+    setAuditLogs(auditLogsPayload.entries);
   }
 
   React.useEffect(() => {
@@ -1451,6 +1498,10 @@ function App() {
           <BadgeDollarSign size={16} />
           Commissions
         </button>
+        <button className={screen === 'audit' ? 'active' : ''} onClick={() => setScreen('audit')}>
+          <ScrollText size={16} />
+          Audit
+        </button>
         <button className={screen === 'manual' ? 'active' : ''} onClick={() => setScreen('manual')}>
           <BookOpenText size={16} />
           Manual
@@ -1499,7 +1550,15 @@ function App() {
         </>
       ) : null}
 
-      {screen === 'onboarding' ? <OnboardingPanel setup={setup} onSaved={setSetup} /> : null}
+      {screen === 'onboarding' ? (
+        <OnboardingPanel
+          setup={setup}
+          onSaved={(nextSetup) => {
+            setSetup(nextSetup);
+            reloadAuditLogs().catch(() => undefined);
+          }}
+        />
+      ) : null}
       {screen === 'users' ? (
         <UsersPanel
           users={users}
@@ -1509,6 +1568,7 @@ function App() {
               const filtered = current.filter((entry) => entry.email !== user.email);
               return [...filtered, user].sort((a, b) => a.lastName.localeCompare(b.lastName));
             });
+            reloadAuditLogs().catch(() => undefined);
           }}
         />
       ) : null}
@@ -1517,6 +1577,7 @@ function App() {
           salesGroups={salesGroups}
           onGroupAdded={(group) => {
             setSalesGroups((current) => [...current, group].sort((left, right) => left.name.localeCompare(right.name)));
+            reloadAuditLogs().catch(() => undefined);
           }}
         />
       ) : null}
@@ -1526,6 +1587,7 @@ function App() {
           salesGroups={salesGroups}
           onMemberAdded={(member) => {
             setMembers((current) => [...current, member].sort((left, right) => left.lastName.localeCompare(right.lastName)));
+            reloadAuditLogs().catch(() => undefined);
           }}
         />
       ) : null}
@@ -1537,6 +1599,7 @@ function App() {
             setCustomers((current) =>
               [...current, customer].sort((left, right) => left.companyName.localeCompare(right.companyName))
             );
+            reloadAuditLogs().catch(() => undefined);
           }}
         />
       ) : null}
@@ -1549,12 +1612,14 @@ function App() {
           onOrderAdded={(order) => {
             setOrders((current) => [...current, order].sort((left, right) => right.placedAt.localeCompare(left.placedAt)));
             reloadFinanceData().catch(() => undefined);
+            reloadAuditLogs().catch(() => undefined);
           }}
         />
       ) : null}
       {screen === 'commissions' ? (
         <CommissionsPanel summaries={commissionSummaries} payouts={payoutBatches} />
       ) : null}
+      {screen === 'audit' ? <AuditLogsPanel entries={auditLogs} /> : null}
       {screen === 'manual' ? <ManualPanel /> : null}
     </main>
   );

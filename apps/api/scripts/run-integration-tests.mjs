@@ -111,6 +111,14 @@ try {
     'Sales group count did not increase after create.'
   );
 
+  const auditLogs = await invoke('GET', '/api/admin/audit-logs');
+  assert(auditLogs.status === 200, 'Audit log list request failed.');
+  assert(
+    Array.isArray(auditLogs.body?.entries) &&
+      auditLogs.body.entries.some((entry) => entry.actionKey === 'sales_group.created' && entry.entityId === createdSalesGroupId),
+    'Audit log did not capture the created sales group.'
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -121,7 +129,8 @@ try {
           'session',
           'finance tenant context',
           'tenant user role denial',
-          'sales group create and list'
+          'sales group create and list',
+          'audit log capture'
         ]
       },
       null,

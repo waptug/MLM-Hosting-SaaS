@@ -29,6 +29,9 @@ Current starter migration:
 - [0001_phase1_foundation.sql](./0001_phase1_foundation.sql)
 - [0002_core_sales_entities.sql](./0002_core_sales_entities.sql)
 - [0003_demo_seed_data.sql](./0003_demo_seed_data.sql)
+- [0004_tenant_admin_fields.sql](./0004_tenant_admin_fields.sql)
+- [0005_backfill_demo_tenant_admin.sql](./0005_backfill_demo_tenant_admin.sql)
+- [0006_audit_logs.sql](./0006_audit_logs.sql)
 
 Core entity coverage now includes:
 
@@ -37,6 +40,7 @@ Core entity coverage now includes:
 - `customers`
 - `products`
 - `orders`
+- `audit_logs`
 
 Current runtime note:
 
