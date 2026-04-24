@@ -389,12 +389,22 @@ const manualSections: ManualSection[] = [
     items: [
       'Direct commission is calculated from the product commissionable rate applied to active order revenue.',
       'Override commission is currently calculated as 5% of active direct-downline order revenue.',
-      'Draft payout batches represent a payable period snapshot and are intended for finance review.',
-      'Paid batches are historical references only in the current build; payout approval actions are still planned.'
+      'Draft payout batches represent a payable period snapshot and can move through approve and paid states.',
+      'Batch detail panels show payout line items and locked commission snapshots for historical reference.'
     ]
   },
   {
-    title: '6. Recommended Operating Workflow',
+    title: '6. Billing and Subscriptions',
+    summary: 'Tenant billing now lives in the app so SaaS operators can manage plan state and invoice history.',
+    items: [
+      'Open Billing to review the current tenant plan, billing interval, seat limit, and pricing.',
+      'Use the edit form to adjust the active subscription for the tenant.',
+      'Review the invoice list to track open and paid billing periods.',
+      'Mark invoices paid when finance closes out the SaaS billing cycle.'
+    ]
+  },
+  {
+    title: '7. Recommended Operating Workflow',
     summary: 'This is the clean order of operations for a new tenant or reseller launch.',
     items: [
       'Configure onboarding and tenant users.',
@@ -407,12 +417,12 @@ const manualSections: ManualSection[] = [
     ]
   },
   {
-    title: '7. Current Build Limits',
+    title: '8. Current Build Limits',
     summary: 'These notes matter for operating the current version correctly.',
     items: [
       'Tenant onboarding, tenant users, and the business domain are PostgreSQL-backed for the demo tenant.',
       'Password login, invitation acceptance, and session cookies are now active for the local demo tenant.',
-      'Email delivery, password reset, and payout approvals are still pending production work.',
+      'Email delivery, password reset, and billing/invoice workflows are active, while deployment hardening is still pending production work.',
       'Audit logging now captures key admin create actions and setup updates.',
       'For the current local environment, the app expects DATABASE_URL to point at the Postgres container.'
     ]
