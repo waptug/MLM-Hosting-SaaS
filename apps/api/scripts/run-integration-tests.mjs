@@ -24,6 +24,7 @@ function readCookieHeader(headers) {
 
 let createdSalesGroupId = null;
 let createdInvitationId = null;
+let createdRevokedInvitationId = null;
 let createdAcceptedUserEmail = null;
 let payoutBatchStateResetNeeded = false;
 let billingInvoiceStateResetNeeded = false;
@@ -317,6 +318,44 @@ try {
     'Audit log did not capture the invitation create and send actions.'
   );
 
+  const createRevokedInvitation = await invoke('POST', '/api/admin/invitations', {
+    headers: {
+      'content-type': 'application/json',
+      cookie: sessionCookie
+    },
+    body: {
+      email: `revoked-${uniqueSuffix.toLowerCase()}@example.com`,
+      firstName: 'Revoked',
+      lastName: uniqueSuffix,
+      role: 'sales_rep'
+    }
+  });
+  assert(createRevokedInvitation.status === 201, 'Revoked invitation create request failed.');
+  createdRevokedInvitationId = createRevokedInvitation.body?.invitation?.id ?? null;
+  assert(createdRevokedInvitationId, 'Created revoked invitation did not return an id.');
+
+  const revokeInvitation = await invoke('POST', `/api/admin/invitations/${createdRevokedInvitationId}/revoke`, {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(revokeInvitation.status === 200, 'Invitation revoke request failed.');
+  assert(revokeInvitation.body?.invitation?.status === 'revoked', 'Invitation did not move to revoked.');
+
+  const auditLogsAfterRevoke = await invoke('GET', '/api/admin/audit-logs', {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(auditLogsAfterRevoke.status === 200, 'Audit log list after invitation revoke failed.');
+  assert(
+    Array.isArray(auditLogsAfterRevoke.body?.entries) &&
+      auditLogsAfterRevoke.body.entries.some(
+        (entry) => entry.actionKey === 'tenant.invitation.revoked' && entry.entityId === createdRevokedInvitationId
+      ),
+    'Audit log did not capture the invitation revoke action.'
+  );
+
   const approvePayout = await invoke('POST', `/api/admin/payouts/${payoutBatchId}/approve`, {
     headers: {
       cookie: sessionCookie
@@ -473,6 +512,7 @@ try {
           'audit log capture',
           'invitation create and list',
           'invitation delivery logging',
+          'invitation revoke',
           'payout approve and pay',
           'invitation acceptance and invited login',
           'password reset request and completion',
@@ -560,6 +600,13 @@ try {
     await pool.query('DELETE FROM tenant_invitations WHERE id = $1', [createdInvitationId]);
     await pool.query("DELETE FROM email_delivery_logs WHERE delivery_type = 'invitation' AND related_entity_id = $1", [
       createdInvitationId
+    ]);
+  }
+
+  if (createdRevokedInvitationId) {
+    await pool.query('DELETE FROM tenant_invitations WHERE id = $1', [createdRevokedInvitationId]);
+    await pool.query("DELETE FROM email_delivery_logs WHERE delivery_type = 'invitation' AND related_entity_id = $1", [
+      createdRevokedInvitationId
     ]);
   }
 

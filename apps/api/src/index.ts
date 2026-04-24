@@ -30,6 +30,7 @@ import {
   listPayoutItems,
   listTenantInvitations,
   listTenantUsers,
+  revokeTenantInvitation,
   markInvoicePaid,
   recordEmailDelivery,
   recordAuditLog,
@@ -413,8 +414,8 @@ app.post(
     const invitations = await listTenantInvitations();
     const invitation = invitations.find((entry) => entry.id === invitationId);
 
-    if (!invitation || !invitation.acceptanceToken) {
-      res.status(404).json({ error: 'Invitation not found or does not expose a delivery token.' });
+    if (!invitation || invitation.status !== 'pending' || !invitation.acceptanceToken) {
+      res.status(404).json({ error: 'Invitation not found, is not pending, or does not expose a delivery token.' });
       return;
     }
 
@@ -440,6 +441,36 @@ app.post(
     });
 
     res.json({ delivery });
+  }
+);
+
+app.post(
+  '/api/admin/invitations/:id/revoke',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager']),
+  async (req, res) => {
+    const invitationId = String(req.params.id || '');
+    try {
+      const invitation = await revokeTenantInvitation(invitationId);
+
+      await recordAuditLog({
+        actorEmail: req.tenantContext?.user.email,
+        actionKey: 'tenant.invitation.revoked',
+        entityType: 'tenant_invitation',
+        entityId: invitation.id,
+        summary: `Revoked invitation for ${invitation.email}.`,
+        details: {
+          role: invitation.role,
+          status: invitation.status
+        }
+      });
+
+      res.json({ invitation });
+    } catch (error) {
+      res.status(400).json({
+        error: error instanceof Error ? error.message : 'Unable to revoke invitation.'
+      });
+    }
   }
 );
 

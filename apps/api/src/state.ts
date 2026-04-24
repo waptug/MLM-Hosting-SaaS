@@ -594,6 +594,37 @@ export async function createTenantInvitation(input: {
   };
 }
 
+export async function revokeTenantInvitation(invitationId: string) {
+  const pool = await getPool();
+  const id = await tenantId(pool);
+
+  const current = await pool.query<{ status: 'pending' | 'accepted' | 'revoked'; email: string }>(
+    'SELECT status, email FROM tenant_invitations WHERE tenant_id = $1 AND id = $2 LIMIT 1',
+    [id, invitationId]
+  );
+  const row = current.rows[0];
+  if (!row) {
+    throw new Error('Invitation not found.');
+  }
+
+  if (row.status !== 'pending') {
+    throw new Error('Only pending invitations can be revoked.');
+  }
+
+  await pool.query(
+    `
+      UPDATE tenant_invitations
+      SET
+        status = 'revoked'
+      WHERE tenant_id = $1 AND id = $2
+    `,
+    [id, invitationId]
+  );
+
+  const invitations = await listTenantInvitations();
+  return invitations.find((invitation) => invitation.id === invitationId)!;
+}
+
 export async function listEmailDeliveryLogs(limit = 50): Promise<EmailDeliveryLog[]> {
   const pool = await getPool();
   const id = await tenantId(pool);

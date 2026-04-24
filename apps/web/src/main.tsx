@@ -439,44 +439,13 @@ const productionTodoGroups: TodoGroup[] = [
   {
     title: '1. Real user lifecycle',
     items: [
-      'password reset',
-      'email delivery for invitations',
       'invite expiration and revocation UI',
       'login rate limiting and lockout',
       'secure cookie settings for production domains'
     ]
   },
   {
-    title: '2. Commission system hardening',
-    items: [
-      'versioned commission plans',
-      'configurable multilevel rules',
-      'qualification logic by rank, volume, and group',
-      'historical commission snapshots so rule changes do not rewrite prior payouts'
-    ]
-  },
-  {
-    title: '3. Payout operations',
-    items: [
-      'payout line items, not just batch headers',
-      'reconciliation and approval history',
-      'export for accounting',
-      'void and reopen flows',
-      'bank or payment-provider integration if needed'
-    ]
-  },
-  {
-    title: '4. White-label SaaS controls',
-    items: [
-      'tenant branding upload',
-      'custom domains',
-      'branded email templates',
-      'tenant-specific plan and catalog configuration',
-      'tenant provisioning flow for new reseller accounts'
-    ]
-  },
-  {
-    title: '5. Security and compliance',
+    title: '2. Security and compliance',
     items: [
       'CSRF protection',
       'stronger session management',
@@ -487,16 +456,7 @@ const productionTodoGroups: TodoGroup[] = [
     ]
   },
   {
-    title: '6. Testing depth',
-    items: [
-      'broader API integration coverage',
-      'UI and browser tests for login, invitations, and payouts',
-      'migration tests',
-      'permission matrix tests'
-    ]
-  },
-  {
-    title: '7. Operations and deployment',
+    title: '3. Operations and deployment',
     items: [
       'production deployment config',
       'CI/CD',
@@ -507,14 +467,43 @@ const productionTodoGroups: TodoGroup[] = [
     ]
   },
   {
-    title: '8. Data model maturity',
+    title: '4. Testing depth',
     items: [
-      'password reset tokens',
-      'email delivery logs'
+      'broader API integration coverage',
+      'UI and browser tests for login, invitations, and payouts',
+      'migration tests',
+      'permission matrix tests'
     ]
   },
   {
-    title: '9. Product polish',
+    title: '5. Commission system hardening',
+    items: [
+      'configurable multilevel rules',
+      'qualification logic by rank, volume, and group',
+      'historical commission snapshots so rule changes do not rewrite prior payouts'
+    ]
+  },
+  {
+    title: '6. Payout operations',
+    items: [
+      'reconciliation and approval history',
+      'export for accounting',
+      'void and reopen flows',
+      'bank or payment-provider integration if needed'
+    ]
+  },
+  {
+    title: '7. White-label SaaS controls',
+    items: [
+      'tenant branding upload',
+      'custom domains',
+      'branded email templates',
+      'tenant-specific plan and catalog configuration',
+      'tenant provisioning flow for new reseller accounts'
+    ]
+  },
+  {
+    title: '8. Product polish',
     items: [
       'pagination, filtering, and search on admin screens',
       'better finance workflow UX'
@@ -523,11 +512,11 @@ const productionTodoGroups: TodoGroup[] = [
 ];
 
 const productionLaunchOrder = [
-  'Password reset and invitation delivery',
-  'Commission plan and rule tables',
-  'Payout line items and stronger payout workflow',
-  'Deployment, monitoring, and CI/CD',
-  'Browser test coverage'
+  'Invitation expiration and revocation UI',
+  'CSRF protection and stronger session management',
+  'Production deployment, monitoring, and CI/CD',
+  'Browser and permission coverage',
+  'Remaining white-label controls'
 ];
 
 const deepDiveSections: DeepDiveSection[] = [
@@ -885,6 +874,7 @@ function InvitationsPanel({
   });
   const [saving, setSaving] = React.useState(false);
   const [sendingInvitationId, setSendingInvitationId] = React.useState('');
+  const [revokingInvitationId, setRevokingInvitationId] = React.useState('');
   const [error, setError] = React.useState('');
 
   React.useEffect(() => {
@@ -942,6 +932,24 @@ function InvitationsPanel({
     onDeliveryLogged(payload.delivery);
   }
 
+  async function revokeInvitation(invitationId: string) {
+    setRevokingInvitationId(invitationId);
+    setError('');
+
+    const response = await fetch(`/api/admin/invitations/${invitationId}/revoke`, {
+      method: 'POST'
+    });
+    const payload = await response.json();
+    setRevokingInvitationId('');
+
+    if (!response.ok) {
+      setError(payload.error || 'Unable to revoke invitation.');
+      return;
+    }
+
+    onInvitationAdded(payload.invitation);
+  }
+
   return (
     <section className="content-grid">
       <article className="panel">
@@ -966,14 +974,23 @@ function InvitationsPanel({
                   {invitation.status}
                 </span>
                 {invitation.status === 'pending' ? (
-                  <button
-                    type="button"
-                    className="primary"
-                    disabled={sendingInvitationId === invitation.id}
-                    onClick={() => sendInvitation(invitation.id)}
-                  >
-                    {sendingInvitationId === invitation.id ? 'Sending' : 'Send invite'}
-                  </button>
+                  <div className="batch-actions">
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={sendingInvitationId === invitation.id}
+                      onClick={() => sendInvitation(invitation.id)}
+                    >
+                      {sendingInvitationId === invitation.id ? 'Sending' : 'Send invite'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={revokingInvitationId === invitation.id}
+                      onClick={() => revokeInvitation(invitation.id)}
+                    >
+                      {revokingInvitationId === invitation.id ? 'Saving' : 'Revoke'}
+                    </button>
+                  </div>
                 ) : null}
               </div>
             </div>
@@ -2966,7 +2983,10 @@ function App() {
           tenantRoles={tenantRoles}
           deliveries={deliveryLogs}
           onInvitationAdded={(invitation) => {
-            setInvitations((current) => [invitation, ...current]);
+            setInvitations((current) => {
+              const filtered = current.filter((entry) => entry.id !== invitation.id);
+              return [invitation, ...filtered];
+            });
             reloadAuditLogs().catch(() => undefined);
           }}
           onDeliveryLogged={(delivery) => {
