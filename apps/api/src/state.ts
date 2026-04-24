@@ -122,6 +122,18 @@ export type TenantInvitation = {
   acceptanceToken?: string;
 };
 
+export type EmailDeliveryLog = {
+  id: string;
+  recipientEmail: string;
+  deliveryType: 'invitation' | 'password_reset';
+  subjectLine: string;
+  deliveryStatus: 'queued' | 'sent' | 'failed';
+  tokenPreview: string;
+  relatedEntityType: string;
+  relatedEntityId: string;
+  createdAt: string;
+};
+
 type DatabasePool = {
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
@@ -415,7 +427,8 @@ export async function listTenantInvitations(limit = 50): Promise<TenantInvitatio
         COALESCE(inviter.email, '') AS "invitedByEmail",
         invite.status,
         invite.expires_at::text AS "expiresAt",
-        invite.created_at::text AS "createdAt"
+        invite.created_at::text AS "createdAt",
+        invite.invitation_token AS "acceptanceToken"
       FROM tenant_invitations invite
       LEFT JOIN users inviter ON inviter.id = invite.invited_by_user_id
       WHERE invite.tenant_id = $1
@@ -498,4 +511,75 @@ export async function createTenantInvitation(input: {
     ...invitations.find((invitation) => invitation.id === invitationId)!,
     acceptanceToken: invitationToken
   };
+}
+
+export async function listEmailDeliveryLogs(limit = 50): Promise<EmailDeliveryLog[]> {
+  const pool = await getPool();
+  const id = await tenantId(pool);
+  const result = await pool.query<EmailDeliveryLog>(
+    `
+      SELECT
+        id::text AS id,
+        recipient_email AS "recipientEmail",
+        delivery_type AS "deliveryType",
+        subject_line AS "subjectLine",
+        delivery_status AS "deliveryStatus",
+        token_preview AS "tokenPreview",
+        related_entity_type AS "relatedEntityType",
+        related_entity_id AS "relatedEntityId",
+        created_at::text AS "createdAt"
+      FROM email_delivery_logs
+      WHERE tenant_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2
+    `,
+    [id, limit]
+  );
+
+  return result.rows;
+}
+
+export async function recordEmailDelivery(input: {
+  recipientEmail: string;
+  deliveryType: 'invitation' | 'password_reset';
+  subjectLine: string;
+  deliveryStatus?: 'queued' | 'sent' | 'failed';
+  tokenPreview?: string;
+  relatedEntityType?: string;
+  relatedEntityId?: string;
+}) {
+  const pool = await getPool();
+  const id = await tenantId(pool);
+  const deliveryId = randomUUID();
+
+  await pool.query(
+    `
+      INSERT INTO email_delivery_logs (
+        id,
+        tenant_id,
+        recipient_email,
+        delivery_type,
+        subject_line,
+        delivery_status,
+        token_preview,
+        related_entity_type,
+        related_entity_id
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `,
+    [
+      deliveryId,
+      id,
+      input.recipientEmail.trim().toLowerCase(),
+      input.deliveryType,
+      input.subjectLine,
+      input.deliveryStatus || 'sent',
+      input.tokenPreview || '',
+      input.relatedEntityType || '',
+      input.relatedEntityId || ''
+    ]
+  );
+
+  const logs = await listEmailDeliveryLogs();
+  return logs.find((entry) => entry.id === deliveryId)!;
 }

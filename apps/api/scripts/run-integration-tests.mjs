@@ -16,6 +16,12 @@ function assert(condition, message) {
   }
 }
 
+function readCookieHeader(headers) {
+  const rawCookie = headers['set-cookie'];
+  if (Array.isArray(rawCookie)) return String(rawCookie[0] || '').split(';')[0];
+  return String(rawCookie || '').split(';')[0];
+}
+
 let createdSalesGroupId = null;
 let createdInvitationId = null;
 let createdAcceptedUserEmail = null;
@@ -24,6 +30,7 @@ const payoutBatchId = '00000000-0000-0000-0000-000000000601';
 const uniqueSuffix = randomUUID().slice(0, 8).toUpperCase();
 let sessionCookie = '';
 let invitedSessionCookie = '';
+let passwordResetTokenForOwner = '';
 
 async function invoke(method, path, { headers = {}, body } = {}) {
   const request = httpMocks.createRequest({
@@ -81,7 +88,7 @@ try {
     }
   });
   assert(login.status === 200, 'Login request failed.');
-  sessionCookie = String(login.headers['set-cookie'] || '').split(';')[0];
+  sessionCookie = readCookieHeader(login.headers);
   assert(sessionCookie.includes('mlm_hosting_session='), 'Login did not return a session cookie.');
 
   const session = await invoke('GET', '/api/session', {
@@ -188,6 +195,14 @@ try {
   assert(createdInvitationId, 'Created invitation did not return an id.');
   assert(createInvitation.body?.invitation?.acceptanceToken, 'Created invitation did not return an acceptance token.');
 
+  const sendInvitation = await invoke('POST', `/api/admin/invitations/${createdInvitationId}/send`, {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(sendInvitation.status === 200, 'Invitation send request failed.');
+  assert(sendInvitation.body?.delivery?.deliveryType === 'invitation', 'Invitation send did not create an invitation delivery log.');
+
   const invitationsAfter = await invoke('GET', '/api/admin/invitations', {
     headers: {
       cookie: sessionCookie
@@ -209,8 +224,11 @@ try {
     Array.isArray(auditLogsAfterInvite.body?.entries) &&
       auditLogsAfterInvite.body.entries.some(
         (entry) => entry.actionKey === 'tenant.invitation.created' && entry.entityId === createdInvitationId
+      ) &&
+      auditLogsAfterInvite.body.entries.some(
+        (entry) => entry.actionKey === 'tenant.invitation.sent' && entry.entityId === createdInvitationId
       ),
-    'Audit log did not capture the created invitation.'
+    'Audit log did not capture the invitation create and send actions.'
   );
 
   const approvePayout = await invoke('POST', `/api/admin/payouts/${payoutBatchId}/approve`, {
@@ -258,7 +276,7 @@ try {
     }
   });
   assert(acceptInvitation.status === 201, 'Invitation acceptance request failed.');
-  invitedSessionCookie = String(acceptInvitation.headers['set-cookie'] || '').split(';')[0];
+  invitedSessionCookie = readCookieHeader(acceptInvitation.headers);
   assert(invitedSessionCookie.includes('mlm_hosting_session='), 'Invitation acceptance did not return a session cookie.');
 
   const invitedSession = await invoke('GET', '/api/session', {
@@ -281,16 +299,71 @@ try {
   });
   assert(invitedLogin.status === 200, 'Invited user login failed after acceptance.');
 
+  const requestPasswordReset = await invoke('POST', '/api/auth/request-password-reset', {
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: {
+      tenantSlug: 'demo-hosting-group',
+      email: 'owner@example.com'
+    }
+  });
+  assert(requestPasswordReset.status === 201, 'Password reset request failed.');
+  passwordResetTokenForOwner = requestPasswordReset.body?.resetToken ?? '';
+  assert(passwordResetTokenForOwner, 'Password reset request did not return a reset token.');
+
+  const resetPasswordRequest = await invoke('POST', '/api/auth/reset-password', {
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: {
+      tenantSlug: 'demo-hosting-group',
+      resetToken: passwordResetTokenForOwner,
+      password: 'demo-password-updated'
+    }
+  });
+  assert(resetPasswordRequest.status === 200, 'Password reset completion failed.');
+
+  const reloginAfterReset = await invoke('POST', '/api/auth/login', {
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: {
+      tenantSlug: 'demo-hosting-group',
+      email: 'owner@example.com',
+      password: 'demo-password-updated'
+    }
+  });
+  assert(reloginAfterReset.status === 200, 'Login with reset password failed.');
+
+  const deliveryLogs = await invoke('GET', '/api/admin/email-delivery-logs', {
+    headers: {
+      cookie: readCookieHeader(reloginAfterReset.headers) || sessionCookie
+    }
+  });
+  assert(deliveryLogs.status === 200, 'Email delivery log list request failed.');
+  assert(
+    Array.isArray(deliveryLogs.body?.deliveries) &&
+      deliveryLogs.body.deliveries.some(
+        (entry) => entry.deliveryType === 'invitation' && entry.relatedEntityId === createdInvitationId
+      ) &&
+      deliveryLogs.body.deliveries.some(
+        (entry) => entry.deliveryType === 'password_reset' && entry.recipientEmail === 'owner@example.com'
+      ),
+    'Email delivery log did not capture invitation and password reset deliveries.'
+  );
+
   const logout = await invoke('POST', '/api/auth/logout', {
     headers: {
-      cookie: sessionCookie
+      cookie: readCookieHeader(reloginAfterReset.headers) || sessionCookie
     }
   });
   assert(logout.status === 200, 'Logout request failed.');
 
+  const resetSessionCookie = readCookieHeader(reloginAfterReset.headers) || sessionCookie;
   const loggedOutSession = await invoke('GET', '/api/session', {
     headers: {
-      cookie: sessionCookie
+      cookie: resetSessionCookie
     }
   });
   assert(loggedOutSession.status === 401, 'Logged out session should no longer resolve.');
@@ -309,8 +382,10 @@ try {
           'sales group create and list',
           'audit log capture',
           'invitation create and list',
+          'invitation delivery logging',
           'payout approve and pay',
           'invitation acceptance and invited login',
+          'password reset request and completion',
           'logout'
         ]
       },
@@ -337,6 +412,24 @@ try {
     await pool.query('DELETE FROM audit_logs WHERE entity_type = $1 AND entity_id = $2', ['payout_batch', payoutBatchId]);
   }
 
+  if (passwordResetTokenForOwner) {
+    await pool.query(
+      `
+        UPDATE users
+        SET password_hash = $2, updated_at = NOW()
+        WHERE email = $1
+      `,
+      [
+        'owner@example.com',
+        'scrypt$16384$8$1$959fc91fe5609c6de5c0261c4d7f36d6$3b57554f03256bd01f0959560b96e82b4e391c6cb153da8385ceaed970001e323c44e4aae6505718c4a3f6dfe9d3fe53c29409c143bb88ea7afa6bf0e351a356'
+      ]
+    );
+    await pool.query('DELETE FROM password_reset_tokens WHERE tenant_id = $1', ['00000000-0000-0000-0000-000000000001']);
+    await pool.query(
+      "DELETE FROM email_delivery_logs WHERE delivery_type = 'password_reset' AND recipient_email = 'owner@example.com'"
+    );
+  }
+
   if (createdAcceptedUserEmail) {
     await pool.query('DELETE FROM tenant_users WHERE user_id IN (SELECT id FROM users WHERE email = $1)', [createdAcceptedUserEmail]);
     await pool.query('DELETE FROM users WHERE email = $1', [createdAcceptedUserEmail]);
@@ -344,6 +437,9 @@ try {
 
   if (createdInvitationId) {
     await pool.query('DELETE FROM tenant_invitations WHERE id = $1', [createdInvitationId]);
+    await pool.query("DELETE FROM email_delivery_logs WHERE delivery_type = 'invitation' AND related_entity_id = $1", [
+      createdInvitationId
+    ]);
   }
 
   if (createdSalesGroupId) {

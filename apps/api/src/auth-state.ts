@@ -288,3 +288,136 @@ export async function acceptInvitation(input: {
     role: invitation.role
   };
 }
+
+export async function requestPasswordReset(input: {
+  tenantSlug: string;
+  email: string;
+}) {
+  const result = await pool.query<{
+    tenantId: string;
+    userId: string;
+    email: string;
+  }>(
+    `
+      SELECT
+        t.id::text AS "tenantId",
+        u.id::text AS "userId",
+        u.email
+      FROM tenants t
+      JOIN tenant_users tu ON tu.tenant_id = t.id
+      JOIN users u ON u.id = tu.user_id
+      WHERE t.slug = $1 AND u.email = $2
+      LIMIT 1
+    `,
+    [input.tenantSlug.trim(), input.email.trim().toLowerCase()]
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    return null;
+  }
+
+  const resetToken = createSessionToken();
+  const resetTokenHash = hashSessionToken(resetToken);
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 30).toISOString();
+
+  await pool.query(
+    `
+      INSERT INTO password_reset_tokens (
+        id,
+        tenant_id,
+        user_id,
+        token_hash,
+        status,
+        expires_at
+      )
+      VALUES ($1, $2, $3, $4, 'pending', $5)
+    `,
+    [randomUUID(), row.tenantId, row.userId, resetTokenHash, expiresAt]
+  );
+
+  return {
+    tenantId: row.tenantId,
+    userId: row.userId,
+    email: row.email,
+    resetToken,
+    expiresAt
+  };
+}
+
+export async function resetPassword(input: {
+  tenantSlug: string;
+  resetToken: string;
+  password: string;
+}) {
+  const resetTokenHash = hashSessionToken(input.resetToken.trim());
+  const result = await pool.query<{
+    tokenId: string;
+    tenantId: string;
+    userId: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    role: RoleKey;
+  }>(
+    `
+      SELECT
+        token.id::text AS "tokenId",
+        t.id::text AS "tenantId",
+        u.id::text AS "userId",
+        u.email,
+        u.first_name AS "firstName",
+        u.last_name AS "lastName",
+        tu.role_key AS role
+      FROM password_reset_tokens token
+      JOIN tenants t ON t.id = token.tenant_id
+      JOIN users u ON u.id = token.user_id
+      JOIN tenant_users tu ON tu.tenant_id = t.id AND tu.user_id = u.id
+      WHERE
+        t.slug = $1
+        AND token.token_hash = $2
+        AND token.status = 'pending'
+        AND token.expires_at > NOW()
+      LIMIT 1
+    `,
+    [input.tenantSlug.trim(), resetTokenHash]
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    throw new Error('Password reset token is invalid or expired.');
+  }
+
+  const passwordHash = await hashPassword(input.password);
+
+  await pool.query(
+    `
+      UPDATE users
+      SET
+        password_hash = $2,
+        updated_at = NOW()
+      WHERE id = $1
+    `,
+    [row.userId, passwordHash]
+  );
+
+  await pool.query(
+    `
+      UPDATE password_reset_tokens
+      SET
+        status = 'used',
+        used_at = NOW()
+      WHERE id = $1
+    `,
+    [row.tokenId]
+  );
+
+  return {
+    tenantId: row.tenantId,
+    userId: row.userId,
+    email: row.email,
+    firstName: row.firstName,
+    lastName: row.lastName,
+    role: row.role
+  };
+}

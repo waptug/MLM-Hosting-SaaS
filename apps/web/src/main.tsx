@@ -79,6 +79,18 @@ type DemoCredentials = {
   password: string;
 };
 
+type EmailDeliveryLog = {
+  id: string;
+  recipientEmail: string;
+  deliveryType: 'invitation' | 'password_reset';
+  subjectLine: string;
+  deliveryStatus: 'queued' | 'sent' | 'failed';
+  tokenPreview: string;
+  relatedEntityType: string;
+  relatedEntityId: string;
+  createdAt: string;
+};
+
 type SalesGroup = {
   id: string;
   name: string;
@@ -696,11 +708,15 @@ function UsersPanel({
 function InvitationsPanel({
   invitations,
   tenantRoles,
-  onInvitationAdded
+  deliveries,
+  onInvitationAdded,
+  onDeliveryLogged
 }: {
   invitations: TenantInvitation[];
   tenantRoles: string[];
+  deliveries: EmailDeliveryLog[];
   onInvitationAdded: (invitation: TenantInvitation) => void;
+  onDeliveryLogged: (delivery: EmailDeliveryLog) => void;
 }) {
   const [form, setForm] = React.useState({
     email: '',
@@ -709,6 +725,7 @@ function InvitationsPanel({
     role: tenantRoles[0] || 'sales_rep'
   });
   const [saving, setSaving] = React.useState(false);
+  const [sendingInvitationId, setSendingInvitationId] = React.useState('');
   const [error, setError] = React.useState('');
 
   React.useEffect(() => {
@@ -748,6 +765,24 @@ function InvitationsPanel({
     });
   }
 
+  async function sendInvitation(invitationId: string) {
+    setSendingInvitationId(invitationId);
+    setError('');
+
+    const response = await fetch(`/api/admin/invitations/${invitationId}/send`, {
+      method: 'POST'
+    });
+    const payload = await response.json();
+    setSendingInvitationId('');
+
+    if (!response.ok) {
+      setError(payload.error || 'Unable to send invitation.');
+      return;
+    }
+
+    onDeliveryLogged(payload.delivery);
+  }
+
   return (
     <section className="content-grid">
       <article className="panel">
@@ -767,9 +802,21 @@ function InvitationsPanel({
                 </p>
                 {invitation.acceptanceToken ? <p>token: {invitation.acceptanceToken}</p> : null}
               </div>
-              <span className={`status-pill ${invitation.status === 'accepted' ? 'done' : invitation.status === 'revoked' ? 'active' : 'next'}`}>
-                {invitation.status}
-              </span>
+              <div className="batch-actions">
+                <span className={`status-pill ${invitation.status === 'accepted' ? 'done' : invitation.status === 'revoked' ? 'active' : 'next'}`}>
+                  {invitation.status}
+                </span>
+                {invitation.status === 'pending' ? (
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={sendingInvitationId === invitation.id}
+                    onClick={() => sendInvitation(invitation.id)}
+                  >
+                    {sendingInvitationId === invitation.id ? 'Sending' : 'Send invite'}
+                  </button>
+                ) : null}
+              </div>
             </div>
           ))}
         </div>
@@ -811,6 +858,27 @@ function InvitationsPanel({
             </button>
           </div>
         </form>
+      </article>
+
+      <article className="panel">
+        <div className="panel-heading">
+          <h2>Delivery Log</h2>
+          <p>Simulated invitation and reset deliveries recorded for the tenant.</p>
+        </div>
+        <div className="user-list">
+          {deliveries.map((delivery) => (
+            <div className="user-row" key={delivery.id}>
+              <div>
+                <strong>{delivery.subjectLine}</strong>
+                <p>
+                  {delivery.recipientEmail} · {delivery.deliveryType} · {delivery.deliveryStatus}
+                </p>
+                {delivery.tokenPreview ? <p>token: {delivery.tokenPreview}</p> : null}
+              </div>
+              <span className="status-pill next">{new Date(delivery.createdAt).toLocaleDateString()}</span>
+            </div>
+          ))}
+        </div>
       </article>
     </section>
   );
@@ -1676,7 +1744,7 @@ function AuthPanel({
   demoCredentials: DemoCredentials | null;
   onAuthenticated: () => void;
 }) {
-  const [mode, setMode] = React.useState<'login' | 'accept'>('login');
+  const [mode, setMode] = React.useState<'login' | 'accept' | 'reset'>('login');
   const [loginForm, setLoginForm] = React.useState({
     tenantSlug: demoCredentials?.tenantSlug || '',
     email: demoCredentials?.email || '',
@@ -1687,6 +1755,13 @@ function AuthPanel({
     invitationToken: '',
     password: ''
   });
+  const [resetForm, setResetForm] = React.useState({
+    tenantSlug: demoCredentials?.tenantSlug || '',
+    email: demoCredentials?.email || '',
+    resetToken: '',
+    password: ''
+  });
+  const [resetTokenHint, setResetTokenHint] = React.useState('');
   const [error, setError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
 
@@ -1699,6 +1774,12 @@ function AuthPanel({
       password: demoCredentials.password
     });
     setAcceptForm((current) => ({ ...current, tenantSlug: demoCredentials.tenantSlug }));
+    setResetForm({
+      tenantSlug: demoCredentials.tenantSlug,
+      email: demoCredentials.email,
+      resetToken: '',
+      password: ''
+    });
   }, [demoCredentials]);
 
   async function submitLogin(event: React.FormEvent) {
@@ -1743,6 +1824,56 @@ function AuthPanel({
     onAuthenticated();
   }
 
+  async function requestReset(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+
+    const response = await fetch('/api/auth/request-password-reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tenantSlug: resetForm.tenantSlug,
+        email: resetForm.email
+      })
+    });
+    const payload = await response.json();
+    setSaving(false);
+
+    if (!response.ok) {
+      setError(payload.error || 'Unable to request password reset.');
+      return;
+    }
+
+    setResetTokenHint(payload.resetToken || '');
+    setResetForm((current) => ({ ...current, resetToken: payload.resetToken || current.resetToken }));
+  }
+
+  async function submitReset(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+
+    const response = await fetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tenantSlug: resetForm.tenantSlug,
+        resetToken: resetForm.resetToken,
+        password: resetForm.password
+      })
+    });
+    const payload = await response.json();
+    setSaving(false);
+
+    if (!response.ok) {
+      setError(payload.error || 'Unable to reset password.');
+      return;
+    }
+
+    onAuthenticated();
+  }
+
   return (
     <section className="content-grid">
       <article className="panel">
@@ -1756,6 +1887,9 @@ function AuthPanel({
           </button>
           <button className={mode === 'accept' ? 'active' : ''} onClick={() => setMode('accept')}>
             Accept invitation
+          </button>
+          <button className={mode === 'reset' ? 'active' : ''} onClick={() => setMode('reset')}>
+            Reset password
           </button>
         </div>
         {mode === 'login' ? (
@@ -1790,7 +1924,7 @@ function AuthPanel({
               </button>
             </div>
           </form>
-        ) : (
+        ) : mode === 'accept' ? (
           <form className="form-grid onboarding-form" onSubmit={submitAccept}>
             <label>
               Tenant slug
@@ -1819,6 +1953,50 @@ function AuthPanel({
               <button type="submit" className="primary" disabled={saving}>
                 <MailPlus size={16} />
                 {saving ? 'Accepting' : 'Accept invitation'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <form className="form-grid onboarding-form" onSubmit={submitReset}>
+            <label>
+              Tenant slug
+              <input
+                value={resetForm.tenantSlug}
+                onChange={(event) => setResetForm((current) => ({ ...current, tenantSlug: event.target.value }))}
+              />
+            </label>
+            <label>
+              Email
+              <input
+                value={resetForm.email}
+                onChange={(event) => setResetForm((current) => ({ ...current, email: event.target.value }))}
+              />
+            </label>
+            <label className="full-width">
+              Reset token
+              <input
+                value={resetForm.resetToken}
+                onChange={(event) => setResetForm((current) => ({ ...current, resetToken: event.target.value }))}
+              />
+            </label>
+            <label className="full-width">
+              New password
+              <input
+                type="password"
+                value={resetForm.password}
+                onChange={(event) => setResetForm((current) => ({ ...current, password: event.target.value }))}
+              />
+            </label>
+            {resetTokenHint ? <p className="error full-width">reset token: {resetTokenHint}</p> : null}
+            {error ? <p className="error full-width">{error}</p> : null}
+            <div className="form-actions full-width">
+              <button type="button" onClick={requestReset} disabled={saving}>
+                <MailPlus size={16} />
+                {saving ? 'Working' : 'Request reset'}
+              </button>
+              <button type="submit" className="primary" disabled={saving}>
+                <ShieldCheck size={16} />
+                {saving ? 'Working' : 'Reset password'}
               </button>
             </div>
           </form>
@@ -1858,6 +2036,7 @@ function App() {
   const [session, setSession] = React.useState<SessionPayload | null>(null);
   const [setup, setSetup] = React.useState<TenantSetup | null>(null);
   const [demoCredentials, setDemoCredentials] = React.useState<DemoCredentials | null>(null);
+  const [deliveryLogs, setDeliveryLogs] = React.useState<EmailDeliveryLog[]>([]);
   const [users, setUsers] = React.useState<TenantUser[]>([]);
   const [invitations, setInvitations] = React.useState<TenantInvitation[]>([]);
   const [tenantRoles, setTenantRoles] = React.useState<string[]>([]);
@@ -1922,6 +2101,7 @@ function App() {
       setCommissionSummaries([]);
       setPayoutBatches([]);
       setAuditLogs([]);
+      setDeliveryLogs([]);
       return;
     }
 
@@ -1937,7 +2117,8 @@ function App() {
       ordersResponse,
       commissionsResponse,
       payoutsResponse,
-      auditLogsResponse
+      auditLogsResponse,
+      deliveryLogsResponse
     ] = await Promise.all([
       fetch('/api/admin/onboarding'),
       fetch('/api/admin/tenant-users'),
@@ -1950,7 +2131,8 @@ function App() {
       fetch('/api/admin/orders'),
       fetch('/api/admin/commissions'),
       fetch('/api/admin/payouts'),
-      fetch('/api/admin/audit-logs')
+      fetch('/api/admin/audit-logs'),
+      fetch('/api/admin/email-delivery-logs')
     ]);
     const [
       onboardingPayload,
@@ -1964,7 +2146,8 @@ function App() {
       ordersPayload,
       commissionsPayload,
       payoutsPayload,
-      auditLogsPayload
+      auditLogsPayload,
+      deliveryLogsPayload
     ] = await Promise.all([
       onboardingResponse.json(),
       usersResponse.json(),
@@ -1977,7 +2160,8 @@ function App() {
       ordersResponse.json(),
       commissionsResponse.json(),
       payoutsResponse.json(),
-      auditLogsResponse.json()
+      auditLogsResponse.json(),
+      deliveryLogsResponse.json()
     ]);
     setSetup(onboardingPayload.setup);
     setUsers(usersPayload.users);
@@ -1991,6 +2175,7 @@ function App() {
     setCommissionSummaries(commissionsPayload.summaries);
     setPayoutBatches(payoutsPayload.batches);
     setAuditLogs(auditLogsPayload.entries);
+    setDeliveryLogs(deliveryLogsPayload.deliveries);
   }
 
   React.useEffect(() => {
@@ -2178,8 +2363,13 @@ function App() {
         <InvitationsPanel
           invitations={invitations}
           tenantRoles={tenantRoles}
+          deliveries={deliveryLogs}
           onInvitationAdded={(invitation) => {
             setInvitations((current) => [invitation, ...current]);
+            reloadAuditLogs().catch(() => undefined);
+          }}
+          onDeliveryLogged={(delivery) => {
+            setDeliveryLogs((current) => [delivery, ...current]);
             reloadAuditLogs().catch(() => undefined);
           }}
         />

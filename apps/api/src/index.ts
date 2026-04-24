@@ -4,7 +4,14 @@ import { fileURLToPath } from 'node:url';
 import { allRoles } from '../../../packages/auth/src/model.js';
 import { tenantRoles } from '../../../packages/auth/src/model.js';
 import { attachTenantContext, requireRole } from './auth.js';
-import { acceptInvitation, authenticateUser, createAuthSession, revokeAuthSession } from './auth-state.js';
+import {
+  acceptInvitation,
+  authenticateUser,
+  createAuthSession,
+  requestPasswordReset,
+  resetPassword,
+  revokeAuthSession
+} from './auth-state.js';
 import { parseCookies, sessionCookieName } from './auth-security.js';
 import { config } from './config.js';
 import { demoTenant, demoUserEmail, demoUserPassword } from './demo-data.js';
@@ -14,8 +21,10 @@ import {
   createTenantInvitation,
   getTenantSetup,
   listAuditLogs,
+  listEmailDeliveryLogs,
   listTenantInvitations,
   listTenantUsers,
+  recordEmailDelivery,
   recordAuditLog,
   updateTenantSetup
 } from './state.js';
@@ -203,6 +212,91 @@ app.post('/api/auth/accept-invitation', async (req, res) => {
   }
 });
 
+app.post('/api/auth/request-password-reset', async (req, res) => {
+  const body = req.body || {};
+  const tenantSlug = String(body.tenantSlug || '').trim();
+  const email = String(body.email || '').trim().toLowerCase();
+
+  if (!tenantSlug || !email) {
+    res.status(400).json({ error: 'Tenant slug and email are required.' });
+    return;
+  }
+
+  const resetRequest = await requestPasswordReset({ tenantSlug, email });
+  if (!resetRequest) {
+    res.status(404).json({ error: 'No tenant user matched that email.' });
+    return;
+  }
+
+  const delivery = await recordEmailDelivery({
+    recipientEmail: resetRequest.email,
+    deliveryType: 'password_reset',
+    subjectLine: `Password reset for ${tenantSlug}`,
+    tokenPreview: resetRequest.resetToken,
+    relatedEntityType: 'user',
+    relatedEntityId: resetRequest.userId
+  });
+
+  await recordAuditLog({
+    actorEmail: resetRequest.email,
+    actionKey: 'auth.password_reset.requested',
+    entityType: 'user',
+    entityId: resetRequest.userId,
+    summary: `Requested password reset for ${resetRequest.email}.`,
+    details: {
+      tenantSlug,
+      expiresAt: resetRequest.expiresAt
+    }
+  });
+
+  res.status(201).json({
+    ok: true,
+    email: resetRequest.email,
+    expiresAt: resetRequest.expiresAt,
+    resetToken: resetRequest.resetToken,
+    delivery
+  });
+});
+
+app.post('/api/auth/reset-password', async (req, res) => {
+  const body = req.body || {};
+  const tenantSlug = String(body.tenantSlug || '').trim();
+  const resetToken = String(body.resetToken || '').trim();
+  const password = String(body.password || '');
+
+  if (!tenantSlug || !resetToken || password.length < 8) {
+    res.status(400).json({
+      error: 'Tenant slug, reset token, and a password with at least 8 characters are required.'
+    });
+    return;
+  }
+
+  try {
+    const reset = await resetPassword({ tenantSlug, resetToken, password });
+    const session = await createAuthSession(reset);
+
+    setSessionCookie(res, session.sessionToken);
+    await recordAuditLog({
+      actorEmail: reset.email,
+      actionKey: 'auth.password_reset.completed',
+      entityType: 'user',
+      entityId: reset.userId,
+      summary: `Completed password reset for ${reset.email}.`,
+      details: { tenantSlug }
+    });
+
+    res.json({
+      ok: true,
+      email: reset.email,
+      expiresAt: session.expiresAt
+    });
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : 'Unable to reset password.'
+    });
+  }
+});
+
 app.get('/api/auth/demo-credentials', (_req, res) => {
   res.json({
     tenantSlug: demoTenant.slug,
@@ -299,6 +393,45 @@ app.get(
   requireRole(['tenant_owner', 'tenant_manager']),
   async (_req, res) => {
     res.json({ invitations: await listTenantInvitations() });
+  }
+);
+
+app.post(
+  '/api/admin/invitations/:id/send',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager']),
+  async (req, res) => {
+    const invitationId = String(req.params.id || '');
+    const invitations = await listTenantInvitations();
+    const invitation = invitations.find((entry) => entry.id === invitationId);
+
+    if (!invitation || !invitation.acceptanceToken) {
+      res.status(404).json({ error: 'Invitation not found or does not expose a delivery token.' });
+      return;
+    }
+
+    const delivery = await recordEmailDelivery({
+      recipientEmail: invitation.email,
+      deliveryType: 'invitation',
+      subjectLine: `Invitation to join ${req.tenantContext?.tenant.name}`,
+      tokenPreview: invitation.acceptanceToken,
+      relatedEntityType: 'tenant_invitation',
+      relatedEntityId: invitation.id
+    });
+
+    await recordAuditLog({
+      actorEmail: req.tenantContext?.user.email,
+      actionKey: 'tenant.invitation.sent',
+      entityType: 'tenant_invitation',
+      entityId: invitation.id,
+      summary: `Sent invitation to ${invitation.email}.`,
+      details: {
+        role: invitation.role,
+        deliveryId: delivery.id
+      }
+    });
+
+    res.json({ delivery });
   }
 );
 
@@ -735,6 +868,15 @@ app.get(
   requireRole(['tenant_owner', 'tenant_manager', 'finance_manager']),
   async (_req, res) => {
     res.json({ entries: await listAuditLogs() });
+  }
+);
+
+app.get(
+  '/api/admin/email-delivery-logs',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager', 'finance_manager']),
+  async (_req, res) => {
+    res.json({ deliveries: await listEmailDeliveryLogs() });
   }
 );
 
