@@ -27,6 +27,52 @@ function fullName(firstName: SqlNullable, lastName: SqlNullable) {
   return [firstName || '', lastName || ''].join(' ').trim();
 }
 
+type QualificationSpec = {
+  activeOrders: number;
+  minRevenue: number;
+  role: string;
+  groupCode: string;
+};
+
+function parseQualificationSpec(value: string | null | undefined): QualificationSpec {
+  const spec: QualificationSpec = {
+    activeOrders: 0,
+    minRevenue: 0,
+    role: '',
+    groupCode: ''
+  };
+
+  for (const token of String(value || '')
+    .split(/[;,|]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)) {
+    const activeOrdersMatch = token.match(/^active-orders>=(\d+)$/i);
+    if (activeOrdersMatch) {
+      spec.activeOrders = Number(activeOrdersMatch[1] || '0');
+      continue;
+    }
+
+    const revenueMatch = token.match(/^revenue>=(\d+(?:\.\d+)?)$/i);
+    if (revenueMatch) {
+      spec.minRevenue = Number(revenueMatch[1] || '0');
+      continue;
+    }
+
+    const roleMatch = token.match(/^role=(.+)$/i);
+    if (roleMatch) {
+      spec.role = roleMatch[1]?.trim() || '';
+      continue;
+    }
+
+    const groupMatch = token.match(/^group=(.+)$/i);
+    if (groupMatch) {
+      spec.groupCode = groupMatch[1]?.trim() || '';
+    }
+  }
+
+  return spec;
+}
+
 async function tenantContext(pool: DbPool) {
   const result = await pool.query<{ id: string }>('SELECT id::text AS id FROM tenants WHERE slug = $1', [
     demoTenant.slug
@@ -315,8 +361,8 @@ async function listCommissionSummaryQuery(pool: DbPool) {
   const levelTwoRule = rules.find((rule) => rule.ruleType === 'override' && rule.levelNumber === 2);
   const levelOneRate = overrideRule?.percentRate ?? 0.05;
   const levelTwoRate = levelTwoRule?.percentRate ?? 0.02;
-  const levelOneMinActiveOrders = parseInt((overrideRule?.rankFloor || '').match(/active-orders>=(\d+)/)?.[1] || '0', 10);
-  const levelTwoMinActiveOrders = parseInt((levelTwoRule?.rankFloor || '').match(/active-orders>=(\d+)/)?.[1] || '0', 10);
+  const levelOneSpec = parseQualificationSpec(overrideRule?.rankFloor);
+  const levelTwoSpec = parseQualificationSpec(levelTwoRule?.rankFloor);
   const result = await pool.query<{
     memberId: string;
     memberName: string;
@@ -351,7 +397,11 @@ async function listCommissionSummaryQuery(pool: DbPool) {
           COALESCE(
             SUM(
               CASE
-                WHEN COALESCE(sponsor_dt.active_orders::int, 0) >= $4 THEN ao.quantity * ao.unit_price * $2
+                WHEN COALESCE(sponsor_dt.active_orders::int, 0) >= $4
+                  AND COALESCE(sponsor_dt.direct_revenue::numeric, 0) >= $5
+                  AND ($6 = '' OR LOWER(sponsor.role_title) = LOWER($6))
+                  AND ($7 = '' OR sponsor_group.code = $7)
+                THEN ao.quantity * ao.unit_price * $2
                 ELSE 0
               END
             ),
@@ -359,6 +409,7 @@ async function listCommissionSummaryQuery(pool: DbPool) {
           )::text AS level_one_override
         FROM members sponsor
         LEFT JOIN direct_totals sponsor_dt ON sponsor_dt.member_id = sponsor.id
+        LEFT JOIN sales_groups sponsor_group ON sponsor_group.id = sponsor.sales_group_id
         LEFT JOIN members seller ON seller.sponsor_member_id = sponsor.id
         LEFT JOIN active_orders ao ON ao.selling_member_id = seller.id
         WHERE sponsor.tenant_id = $1
@@ -370,7 +421,11 @@ async function listCommissionSummaryQuery(pool: DbPool) {
           COALESCE(
             SUM(
               CASE
-                WHEN COALESCE(sponsor_dt.active_orders::int, 0) >= $5 THEN ao.quantity * ao.unit_price * $3
+                WHEN COALESCE(sponsor_dt.active_orders::int, 0) >= $8
+                  AND COALESCE(sponsor_dt.direct_revenue::numeric, 0) >= $9
+                  AND ($10 = '' OR LOWER(sponsor.role_title) = LOWER($10))
+                  AND ($11 = '' OR sponsor_group.code = $11)
+                THEN ao.quantity * ao.unit_price * $3
                 ELSE 0
               END
             ),
@@ -378,6 +433,7 @@ async function listCommissionSummaryQuery(pool: DbPool) {
           )::text AS level_two_override
         FROM members sponsor
         LEFT JOIN direct_totals sponsor_dt ON sponsor_dt.member_id = sponsor.id
+        LEFT JOIN sales_groups sponsor_group ON sponsor_group.id = sponsor.sales_group_id
         LEFT JOIN members first_level ON first_level.sponsor_member_id = sponsor.id
         LEFT JOIN members second_level ON second_level.sponsor_member_id = first_level.id
         LEFT JOIN active_orders ao ON ao.selling_member_id = second_level.id
@@ -386,11 +442,11 @@ async function listCommissionSummaryQuery(pool: DbPool) {
       )
       SELECT
         m.id::text AS "memberId",
-        m.first_name || ' ' || m.last_name AS "memberName",
-        CASE
-          WHEN sponsor.id IS NULL THEN NULL
-          ELSE sponsor.first_name || ' ' || sponsor.last_name
-        END AS "sponsorName",
+      m.first_name || ' ' || m.last_name AS "memberName",
+      CASE
+        WHEN sponsor.id IS NULL THEN NULL
+        ELSE sponsor.first_name || ' ' || sponsor.last_name
+      END AS "sponsorName",
         dt.active_orders AS "activeOrders",
         dt.direct_revenue AS "directRevenue",
         dt.direct_commission AS "directCommission",
@@ -404,7 +460,19 @@ async function listCommissionSummaryQuery(pool: DbPool) {
       WHERE m.tenant_id = $1
       ORDER BY (dt.direct_commission::numeric + l1.level_one_override::numeric + l2.level_two_override::numeric) DESC, m.last_name
     `,
-    [tenantId, levelOneRate, levelTwoRate, levelOneMinActiveOrders, levelTwoMinActiveOrders]
+    [
+      tenantId,
+      levelOneRate,
+      levelTwoRate,
+      levelOneSpec.activeOrders,
+      levelOneSpec.minRevenue,
+      levelOneSpec.role,
+      levelOneSpec.groupCode,
+      levelTwoSpec.activeOrders,
+      levelTwoSpec.minRevenue,
+      levelTwoSpec.role,
+      levelTwoSpec.groupCode
+    ]
   );
 
   return result.rows.map((row) => ({
@@ -425,7 +493,7 @@ async function listPayoutBatchesQuery(pool: DbPool) {
     id: string;
     periodLabel: string;
     scheduledFor: string;
-    status: 'draft' | 'approved' | 'paid';
+    status: 'draft' | 'approved' | 'paid' | 'void';
     payeeCount: number;
     totalAmount: string;
     approvedAt: string | null;
@@ -524,7 +592,7 @@ async function listPayoutItemsQuery(pool: DbPool) {
 
 async function updatePayoutBatchStatus(
   pool: DbPool,
-  input: { batchId: string; actorEmail: string; status: 'approved' | 'paid' }
+  input: { batchId: string; actorEmail: string; status: 'approved' | 'paid' | 'void' | 'draft' }
 ) {
   const { tenantId } = await tenantContext(pool);
   const actorUserId = await resolveUserIdByEmail(pool, input.actorEmail);
@@ -533,7 +601,7 @@ async function updatePayoutBatchStatus(
     throw new Error(`Unable to resolve payout actor ${input.actorEmail}.`);
   }
 
-  const current = await pool.query<{ status: 'draft' | 'approved' | 'paid' }>(
+  const current = await pool.query<{ status: 'draft' | 'approved' | 'paid' | 'void' }>(
     'SELECT status FROM payout_batches WHERE tenant_id = $1 AND id = $2',
     [tenantId, input.batchId]
   );
@@ -550,15 +618,23 @@ async function updatePayoutBatchStatus(
     throw new Error('Only approved payout batches can be marked paid.');
   }
 
+  if (input.status === 'void' && currentStatus === 'paid') {
+    throw new Error('Paid payout batches cannot be voided.');
+  }
+
+  if (input.status === 'draft' && currentStatus !== 'void') {
+    throw new Error('Only void payout batches can be reopened.');
+  }
+
   await pool.query(
     `
       UPDATE payout_batches
       SET
         status = $3,
-        approved_at = CASE WHEN $3 = 'approved' THEN NOW() ELSE approved_at END,
-        approved_by_user_id = CASE WHEN $3 = 'approved' THEN $4 ELSE approved_by_user_id END,
-        paid_at = CASE WHEN $3 = 'paid' THEN NOW() ELSE paid_at END,
-        paid_by_user_id = CASE WHEN $3 = 'paid' THEN $4 ELSE paid_by_user_id END,
+        approved_at = CASE WHEN $3 = 'approved' THEN NOW() WHEN $3 = 'draft' THEN NULL ELSE approved_at END,
+        approved_by_user_id = CASE WHEN $3 = 'approved' THEN $4 WHEN $3 = 'draft' THEN NULL ELSE approved_by_user_id END,
+        paid_at = CASE WHEN $3 = 'paid' THEN NOW() WHEN $3 = 'draft' THEN NULL ELSE paid_at END,
+        paid_by_user_id = CASE WHEN $3 = 'paid' THEN $4 WHEN $3 = 'draft' THEN NULL ELSE paid_by_user_id END,
         updated_at = NOW()
       WHERE tenant_id = $1 AND id = $2
     `,
@@ -728,5 +804,13 @@ export const postgresBusinessRepository: BusinessRepository = {
   async markPayoutBatchPaid(batchId, actorEmail) {
     const pool = await getPool();
     return updatePayoutBatchStatus(pool, { batchId, actorEmail, status: 'paid' });
+  },
+  async voidPayoutBatch(batchId, actorEmail) {
+    const pool = await getPool();
+    return updatePayoutBatchStatus(pool, { batchId, actorEmail, status: 'void' });
+  },
+  async reopenPayoutBatch(batchId, actorEmail) {
+    const pool = await getPool();
+    return updatePayoutBatchStatus(pool, { batchId, actorEmail, status: 'draft' });
   }
 };

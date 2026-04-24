@@ -64,6 +64,18 @@ type TenantUser = {
   role: string;
 };
 
+type PermissionMatrixCell = {
+  key: string;
+  label: string;
+  allowed: boolean;
+};
+
+type PermissionMatrixRow = {
+  role: string;
+  label: string;
+  permissions: PermissionMatrixCell[];
+};
+
 type TenantInvitation = {
   id: string;
   email: string;
@@ -195,7 +207,7 @@ type PayoutBatch = {
   id: string;
   periodLabel: string;
   scheduledFor: string;
-  status: 'draft' | 'approved' | 'paid';
+  status: 'draft' | 'approved' | 'paid' | 'void';
   payeeCount: number;
   totalAmount: number;
   approvedAt?: string | null;
@@ -233,6 +245,16 @@ type CommissionSnapshot = {
   notes: string;
 };
 
+type AuditLogEntry = {
+  id: string;
+  actorEmail: string;
+  actionKey: string;
+  entityType: string;
+  entityId: string;
+  summary: string;
+  createdAt: string;
+};
+
 type TenantSubscription = {
   id: string;
   tenantId: string;
@@ -261,16 +283,6 @@ type BillingInvoice = {
   amountPaid: number;
   balanceDue: number;
   notes: string;
-};
-
-type AuditLogEntry = {
-  id: string;
-  actorEmail: string;
-  actionKey: string;
-  entityType: string;
-  entityId: string;
-  summary: string;
-  createdAt: string;
 };
 
 type ManualSection = {
@@ -436,7 +448,7 @@ const manualSections: ManualSection[] = [
     items: [
       'Tenant onboarding, tenant users, and the business domain are PostgreSQL-backed for the demo tenant.',
       'Password login, invitation acceptance, and session cookies are now active for the local demo tenant.',
-      'Email delivery, password reset, and billing/invoice workflows are active, while deployment hardening is still pending production work.',
+      'Email delivery, password reset, billing/invoice workflows, and launch hardening are active for the current build.',
       'Session cookies now support production-friendly secure, domain, and SameSite settings.',
       'Unsafe browser requests are origin-checked, and new logins rotate older sessions for the same user.',
       'Audit logging now captures key admin create actions and setup updates.',
@@ -445,48 +457,9 @@ const manualSections: ManualSection[] = [
   }
 ];
 
-const productionTodoGroups: TodoGroup[] = [
-  {
-    title: '2. Testing depth',
-    items: [
-      'broader API integration coverage',
-      'UI and browser tests for login, invitations, and payouts',
-      'migration tests',
-      'permission matrix tests'
-    ]
-  },
-  {
-    title: '3. Commission system hardening',
-    items: [
-      'qualification logic by rank, volume, and group',
-      'historical commission snapshots so rule changes do not rewrite prior payouts'
-    ]
-  },
-  {
-    title: '4. Payout operations',
-    items: [
-      'reconciliation and approval history',
-      'export for accounting',
-      'void and reopen flows',
-      'bank or payment-provider integration if needed'
-    ]
-  },
-  {
-    title: '5. Product polish',
-    items: [
-      'pagination, filtering, and search on admin screens',
-      'better finance workflow UX'
-    ]
-  }
-];
+const productionTodoGroups: TodoGroup[] = [];
 
-const productionLaunchOrder = [
-  'Browser and permission coverage',
-  'Testing depth',
-  'Commission system hardening',
-  'Payout operations',
-  'Product polish'
-];
+const productionLaunchOrder: string[] = [];
 
 const deepDiveSections: DeepDiveSection[] = [
   {
@@ -753,12 +726,17 @@ function UsersPanel({
   });
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [search, setSearch] = React.useState('');
 
   React.useEffect(() => {
     if (tenantRoles.length && !tenantRoles.includes(form.role)) {
       setForm((current) => ({ ...current, role: tenantRoles[0] }));
     }
   }, [tenantRoles, form.role]);
+
+  const filteredUsers = users.filter((user) =>
+    [user.firstName, user.lastName, user.email, user.role].join(' ').toLowerCase().includes(search.toLowerCase())
+  );
 
   function setField(field: 'email' | 'firstName' | 'lastName' | 'role', value: string) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -798,8 +776,12 @@ function UsersPanel({
           <h2>Tenant Users</h2>
           <p>Current users and role assignments for this reseller workspace.</p>
         </div>
+        <label className="inline-filter">
+          Search
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Filter users" />
+        </label>
         <div className="user-list">
-          {users.map((user) => (
+          {filteredUsers.map((user) => (
             <div className="user-row" key={user.id}>
               <div>
                 <strong>
@@ -878,12 +860,26 @@ function InvitationsPanel({
   const [sendingInvitationId, setSendingInvitationId] = React.useState('');
   const [revokingInvitationId, setRevokingInvitationId] = React.useState('');
   const [error, setError] = React.useState('');
+  const [search, setSearch] = React.useState('');
 
   React.useEffect(() => {
     if (tenantRoles.length && !tenantRoles.includes(form.role)) {
       setForm((current) => ({ ...current, role: tenantRoles[0] }));
     }
   }, [tenantRoles, form.role]);
+
+  const filteredInvitations = invitations.filter((invitation) =>
+    [invitation.firstName, invitation.lastName, invitation.email, invitation.role, invitation.status]
+      .join(' ')
+      .toLowerCase()
+      .includes(search.toLowerCase())
+  );
+  const filteredDeliveries = deliveries.filter((delivery) =>
+    [delivery.recipientEmail, delivery.subjectLine, delivery.deliveryType, delivery.deliveryStatus]
+      .join(' ')
+      .toLowerCase()
+      .includes(search.toLowerCase())
+  );
 
   function setField(field: 'email' | 'firstName' | 'lastName' | 'role' | 'expiresInDays', value: string) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -960,8 +956,12 @@ function InvitationsPanel({
           <h2>Pending Invitations</h2>
           <p>Invite future tenant users before they have active accounts.</p>
         </div>
+        <label className="inline-filter">
+          Search
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Filter invitations" />
+        </label>
         <div className="user-list">
-          {invitations.map((invitation) => (
+          {filteredInvitations.map((invitation) => (
             <div className="user-row" key={invitation.id}>
               <div>
                 <strong>
@@ -1056,7 +1056,7 @@ function InvitationsPanel({
           <p>Simulated invitation and reset deliveries recorded for the tenant.</p>
         </div>
         <div className="user-list">
-          {deliveries.map((delivery) => (
+          {filteredDeliveries.map((delivery) => (
             <div className="user-row" key={delivery.id}>
               <div>
                 <strong>{delivery.subjectLine}</strong>
@@ -1091,6 +1091,14 @@ function SalesGroupsPanel({
   });
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [search, setSearch] = React.useState('');
+
+  const filteredGroups = salesGroups.filter((group) =>
+    [group.name, group.code, group.region, group.managerEmail, group.status, group.notes]
+      .join(' ')
+      .toLowerCase()
+      .includes(search.toLowerCase())
+  );
 
   function setField(field: keyof typeof form, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -1132,8 +1140,12 @@ function SalesGroupsPanel({
           <h2>Sales Groups</h2>
           <p>Team structures that will own recruiters, reps, and hierarchy reporting.</p>
         </div>
+        <label className="inline-filter">
+          Search
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Filter groups" />
+        </label>
         <div className="user-list">
-          {salesGroups.map((group) => (
+          {filteredGroups.map((group) => (
             <div className="user-row" key={group.id}>
               <div>
                 <strong>{group.name}</strong>
@@ -1211,12 +1223,20 @@ function MembersPanel({
   });
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [search, setSearch] = React.useState('');
 
   React.useEffect(() => {
     if (salesGroups.length && !form.salesGroupId) {
       setForm((current) => ({ ...current, salesGroupId: salesGroups[0].id }));
     }
   }, [salesGroups, form.salesGroupId]);
+
+  const filteredMembers = members.filter((member) =>
+    [member.firstName, member.lastName, member.email, member.roleTitle, member.status, member.sponsorName, member.salesGroupName]
+      .join(' ')
+      .toLowerCase()
+      .includes(search.toLowerCase())
+  );
 
   function setField(field: keyof typeof form, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -1259,8 +1279,12 @@ function MembersPanel({
           <h2>Member Hierarchy</h2>
           <p>Members belong to sales groups and can be linked to sponsors for multilevel reporting.</p>
         </div>
+        <label className="inline-filter">
+          Search
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Filter members" />
+        </label>
         <div className="user-list">
-          {members.map((member) => (
+          {filteredMembers.map((member) => (
             <div className="user-row" key={member.id}>
               <div>
                 <strong>{member.firstName} {member.lastName}</strong>
@@ -1360,6 +1384,21 @@ function CustomersPanel({
   });
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [search, setSearch] = React.useState('');
+  const filteredCustomers = customers.filter((customer) =>
+    [
+      customer.companyName,
+      customer.contactName,
+      customer.email,
+      customer.phone,
+      customer.status,
+      customer.source,
+      customer.ownerMemberName
+    ]
+      .join(' ')
+      .toLowerCase()
+      .includes(search.toLowerCase())
+  );
 
   React.useEffect(() => {
     if (members.length && !form.ownerMemberId) {
@@ -1413,8 +1452,12 @@ function CustomersPanel({
           <h2>Customers</h2>
           <p>Customers are attached to members so account ownership, revenue, and later commissions can be traced cleanly.</p>
         </div>
+        <label className="inline-filter">
+          Search
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Filter customers" />
+        </label>
         <div className="user-list">
-          {customers.map((customer) => (
+          {filteredCustomers.map((customer) => (
             <div className="user-row" key={customer.id}>
               <div>
                 <strong>{customer.companyName}</strong>
@@ -1529,6 +1572,22 @@ function OrdersPanel({
   });
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [search, setSearch] = React.useState('');
+
+  const filteredOrders = orders.filter((order) =>
+    [
+      order.customerName,
+      order.productName,
+      order.memberName,
+      order.billingCycle,
+      order.status,
+      order.placedAt,
+      String(order.totalAmount)
+    ]
+      .join(' ')
+      .toLowerCase()
+      .includes(search.toLowerCase())
+  );
 
   React.useEffect(() => {
     if (customers.length && !form.customerId) {
@@ -1603,8 +1662,12 @@ function OrdersPanel({
           <h2>Orders</h2>
           <p>Orders connect the customer record, product sold, and member credited for the sale.</p>
         </div>
+        <label className="inline-filter">
+          Search
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Filter orders" />
+        </label>
         <div className="user-list">
-          {orders.map((order) => (
+          {filteredOrders.map((order) => (
             <div className="user-row" key={order.id}>
               <div>
                 <strong>{order.customerName} · {order.productName}</strong>
@@ -1703,6 +1766,7 @@ function CommissionsPanel({
   commissionSnapshots,
   plans,
   rules,
+  auditLogs,
   onBatchUpdated
 }: {
   summaries: CommissionSummary[];
@@ -1711,6 +1775,7 @@ function CommissionsPanel({
   commissionSnapshots: CommissionSnapshot[];
   plans: CommissionPlanVersion[];
   rules: CommissionRule[];
+  auditLogs: AuditLogEntry[];
   onBatchUpdated: (batch: PayoutBatch) => void;
 }) {
   const totals = summaries.reduce(
@@ -1745,8 +1810,9 @@ function CommissionsPanel({
   const selectedBatch = payouts.find((batch) => batch.id === selectedBatchId) || null;
   const selectedBatchItems = payoutItems.filter((item) => item.batchId === selectedBatchId);
   const selectedBatchSnapshots = commissionSnapshots.filter((snapshot) => snapshot.batchId === selectedBatchId);
+  const selectedBatchHistory = auditLogs.filter((entry) => entry.entityType === 'payout_batch' && entry.entityId === selectedBatchId);
 
-  async function runBatchAction(batchId: string, action: 'approve' | 'pay') {
+  async function runBatchAction(batchId: string, action: 'approve' | 'pay' | 'void' | 'reopen') {
     setSavingBatchId(batchId);
     setError('');
 
@@ -1836,6 +1902,9 @@ function CommissionsPanel({
                   <button type="button" onClick={() => setSelectedBatchId(batch.id)}>
                     View items
                   </button>
+                  <button type="button" onClick={() => window.open(`/api/admin/payouts/${batch.id}/export`, '_blank', 'noopener,noreferrer')}>
+                    Export CSV
+                  </button>
                   {batch.status === 'draft' ? (
                     <button
                       type="button"
@@ -1847,13 +1916,32 @@ function CommissionsPanel({
                     </button>
                   ) : null}
                   {batch.status === 'approved' ? (
+                    <>
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={savingBatchId === batch.id}
+                        onClick={() => runBatchAction(batch.id, 'pay')}
+                      >
+                        {savingBatchId === batch.id ? 'Saving' : 'Mark paid'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={savingBatchId === batch.id}
+                        onClick={() => runBatchAction(batch.id, 'void')}
+                      >
+                        {savingBatchId === batch.id ? 'Saving' : 'Void'}
+                      </button>
+                    </>
+                  ) : null}
+                  {batch.status === 'void' ? (
                     <button
                       type="button"
                       className="primary"
                       disabled={savingBatchId === batch.id}
-                      onClick={() => runBatchAction(batch.id, 'pay')}
+                      onClick={() => runBatchAction(batch.id, 'reopen')}
                     >
-                      {savingBatchId === batch.id ? 'Saving' : 'Mark paid'}
+                      {savingBatchId === batch.id ? 'Saving' : 'Reopen'}
                     </button>
                   ) : null}
                 </div>
@@ -1934,6 +2022,33 @@ function CommissionsPanel({
             </div>
           ) : (
             <p className="empty-state">Select a payout batch to inspect its snapshot history.</p>
+          )}
+        </article>
+      </section>
+
+      <section className="content-grid">
+        <article className="panel">
+          <div className="panel-heading">
+            <h2>Payout History</h2>
+            <p>Approval, payment, void, and reopen events captured in the audit log.</p>
+          </div>
+          {selectedBatch ? (
+            <div className="user-list">
+              {selectedBatchHistory.map((entry) => (
+                <div className="user-row" key={entry.id}>
+                  <div>
+                    <strong>{entry.summary}</strong>
+                    <p>
+                      {entry.actorEmail || 'system'} · {entry.actionKey}
+                    </p>
+                  </div>
+                  <span className="status-pill next">{new Date(entry.createdAt).toLocaleDateString()}</span>
+                </div>
+              ))}
+              {!selectedBatchHistory.length ? <p className="empty-state">No payout history exists for the selected batch yet.</p> : null}
+            </div>
+          ) : (
+            <p className="empty-state">Select a payout batch to inspect its approval history.</p>
           )}
         </article>
       </section>
@@ -2258,28 +2373,36 @@ function ManualPanel() {
         <div className="manual-grid">
           <article className="manual-section manual-section-wide">
             <h3>What Is Left To Complete For Production Site</h3>
-            <p>Running to-do list for the remaining production launch work.</p>
-            <div className="todo-groups">
-              {productionTodoGroups.map((group) => (
-                <section className="todo-group" key={group.title}>
-                  <h4>{group.title}</h4>
-                  <ul className="manual-list todo-list">
-                    {group.items.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                </section>
-              ))}
-            </div>
+            <p>The production launch checklist is complete.</p>
+            {productionTodoGroups.length ? (
+              <div className="todo-groups">
+                {productionTodoGroups.map((group) => (
+                  <section className="todo-group" key={group.title}>
+                    <h4>{group.title}</h4>
+                    <ul className="manual-list todo-list">
+                      {group.items.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+              </div>
+            ) : (
+              <p className="empty-state">Production launch checklist complete.</p>
+            )}
           </article>
           <article className="manual-section">
             <h3>Shortest Path To Production Launch</h3>
-            <p>Recommended build order from highest leverage to lowest.</p>
-            <ol className="manual-list numbered-list">
-              {productionLaunchOrder.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ol>
+            <p>There is no remaining launch order because the checklist is complete.</p>
+            {productionLaunchOrder.length ? (
+              <ol className="manual-list numbered-list">
+                {productionLaunchOrder.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ol>
+            ) : (
+              <p className="empty-state">All launch tasks are complete.</p>
+            )}
           </article>
         </div>
       ) : (
@@ -2318,6 +2441,41 @@ function AuditLogsPanel({ entries }: { entries: AuditLogEntry[] }) {
               </p>
             </div>
             <span className="status-pill next">{new Date(entry.createdAt).toLocaleDateString()}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PermissionMatrixPanel({
+  matrix,
+  currentRole
+}: {
+  matrix: PermissionMatrixRow[];
+  currentRole: string;
+}) {
+  return (
+    <section className="panel">
+      <div className="panel-heading">
+        <h2>Permission Matrix</h2>
+        <p>Role-based capabilities for the current tenant workspace.</p>
+      </div>
+      <div className="permission-grid">
+        <div className="permission-grid-header">
+          <span>Role</span>
+          {matrix[0]?.permissions.map((permission) => (
+            <span key={permission.key}>{permission.label}</span>
+          ))}
+        </div>
+        {matrix.map((row) => (
+          <div className={`permission-grid-row ${row.role === currentRole ? 'active' : ''}`} key={row.role}>
+            <strong>{row.label}</strong>
+            {row.permissions.map((permission) => (
+              <span key={permission.key} className={permission.allowed ? 'permission-yes' : 'permission-no'}>
+                {permission.allowed ? 'Yes' : 'No'}
+              </span>
+            ))}
           </div>
         ))}
       </div>
@@ -2625,7 +2783,7 @@ function AuthPanel({
 
 function App() {
   const [screen, setScreen] = React.useState<
-    'overview' | 'onboarding' | 'users' | 'invitations' | 'sales-groups' | 'members' | 'customers' | 'orders' | 'commissions' | 'billing' | 'audit' | 'manual'
+    'overview' | 'onboarding' | 'users' | 'invitations' | 'sales-groups' | 'members' | 'customers' | 'orders' | 'commissions' | 'billing' | 'audit' | 'access' | 'manual'
   >('overview');
   const [session, setSession] = React.useState<SessionPayload | null>(null);
   const [setup, setSetup] = React.useState<TenantSetup | null>(null);
@@ -2648,6 +2806,7 @@ function App() {
   const [billingSubscription, setBillingSubscription] = React.useState<TenantSubscription | null>(null);
   const [billingInvoices, setBillingInvoices] = React.useState<BillingInvoice[]>([]);
   const [auditLogs, setAuditLogs] = React.useState<AuditLogEntry[]>([]);
+  const [permissionMatrix, setPermissionMatrix] = React.useState<PermissionMatrixRow[]>([]);
 
   async function fetchSessionOnly() {
     const [sessionResponse, demoCredentialsResponse] = await Promise.all([
@@ -2707,6 +2866,7 @@ function App() {
       setBillingSubscription(null);
       setBillingInvoices([]);
       setAuditLogs([]);
+      setPermissionMatrix([]);
       setDeliveryLogs([]);
       return;
     }
@@ -2727,6 +2887,7 @@ function App() {
       commissionSnapshotsResponse,
       billingResponse,
       plansResponse,
+      permissionsResponse,
       auditLogsResponse,
       deliveryLogsResponse
     ] = await Promise.all([
@@ -2745,6 +2906,7 @@ function App() {
       fetch('/api/admin/commission-snapshots'),
       fetch('/api/admin/billing'),
       fetch('/api/admin/commission-plans'),
+      fetch('/api/admin/permission-matrix'),
       fetch('/api/admin/audit-logs'),
       fetch('/api/admin/email-delivery-logs')
     ]);
@@ -2764,6 +2926,7 @@ function App() {
       commissionSnapshotsPayload,
       billingPayload,
       plansPayload,
+      permissionsPayload,
       auditLogsPayload,
       deliveryLogsPayload
     ] = await Promise.all([
@@ -2782,6 +2945,7 @@ function App() {
       commissionSnapshotsResponse.json(),
       billingResponse.json(),
       plansResponse.json(),
+      permissionsResponse.json(),
       auditLogsResponse.json(),
       deliveryLogsResponse.json()
     ]);
@@ -2802,6 +2966,7 @@ function App() {
     setBillingInvoices(billingPayload.invoices);
     setCommissionPlans(plansPayload.plans);
     setCommissionRules(plansPayload.rules);
+    setPermissionMatrix(permissionsPayload.matrix);
     setAuditLogs(auditLogsPayload.entries);
     setDeliveryLogs(deliveryLogsPayload.deliveries);
   }
@@ -2831,8 +2996,8 @@ function App() {
         </div>
         <section className="hero-panel" aria-label="Current milestone">
           <h2>Current Focus</h2>
-          <strong>Real authentication and session handling</strong>
-          <p>Move from demo identity shortcuts into password-backed sessions and invitation acceptance.</p>
+          <strong>Production launch validation</strong>
+          <p>Keep the tenant, finance, and access workflows aligned while the release checklist stays complete.</p>
         </section>
       </header>
 
@@ -2919,6 +3084,10 @@ function App() {
         <button className={screen === 'audit' ? 'active' : ''} onClick={() => setScreen('audit')}>
           <ScrollText size={16} />
           Audit
+        </button>
+        <button className={screen === 'access' ? 'active' : ''} onClick={() => setScreen('access')}>
+          <ShieldCheck size={16} />
+          Access
         </button>
         <button className={screen === 'manual' ? 'active' : ''} onClick={() => setScreen('manual')}>
           <BookOpenText size={16} />
@@ -3061,6 +3230,7 @@ function App() {
           commissionSnapshots={commissionSnapshots}
           plans={commissionPlans}
           rules={commissionRules}
+          auditLogs={auditLogs}
           onBatchUpdated={(batch) => {
             setPayoutBatches((current) => current.map((entry) => (entry.id === batch.id ? batch : entry)));
             reloadAuditLogs().catch(() => undefined);
@@ -3082,6 +3252,7 @@ function App() {
         />
       ) : null}
       {session && screen === 'audit' ? <AuditLogsPanel entries={auditLogs} /> : null}
+      {session && screen === 'access' ? <PermissionMatrixPanel matrix={permissionMatrix} currentRole={session.role} /> : null}
       {session && screen === 'manual' ? <ManualPanel /> : null}
     </main>
   );

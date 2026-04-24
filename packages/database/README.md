@@ -51,6 +51,7 @@ Current starter migration:
 - [0023_tenant_branding_and_email_fields.sql](./0023_tenant_branding_and_email_fields.sql)
 - [0024_demo_level_two_commission_rule.sql](./0024_demo_level_two_commission_rule.sql)
 - [0025_demo_level_two_commission_qualification.sql](./0025_demo_level_two_commission_qualification.sql)
+- [0026_demo_commission_hierarchy_expansion.sql](./0026_demo_commission_hierarchy_expansion.sql)
 
 Core entity coverage now includes:
 

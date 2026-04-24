@@ -248,6 +248,66 @@ select {
   padding: 0 12px;
 }
 
+.inline-filter {
+  margin-top: 12px;
+}
+
+.permission-grid {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.permission-grid-header,
+.permission-grid-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(140px, 1.2fr) repeat(10, minmax(0, 1fr));
+  align-items: center;
+}
+
+.permission-grid-header {
+  color: #5e6a64;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.permission-grid-row {
+  background: #f7f5ef;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.permission-grid-row.active {
+  border: 1px solid #92b7a5;
+}
+
+.permission-grid-row strong {
+  font-size: 0.92rem;
+}
+
+.permission-yes,
+.permission-no {
+  border-radius: 999px;
+  display: inline-flex;
+  justify-content: center;
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.permission-yes {
+  background: #d7e7df;
+  color: #1d4e3b;
+}
+
+.permission-no {
+  background: #f2e4e0;
+  color: #8a4336;
+}
+
 .empty-state {
   color: #5e6a64;
   margin: 8px 0 0;

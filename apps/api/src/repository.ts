@@ -45,4 +45,6 @@ export type BusinessRepository = {
   listPayoutItems(): Array<PayoutItem> | Promise<Array<PayoutItem>>;
   approvePayoutBatch(batchId: string, actorEmail: string): PayoutBatch | Promise<PayoutBatch>;
   markPayoutBatchPaid(batchId: string, actorEmail: string): PayoutBatch | Promise<PayoutBatch>;
+  voidPayoutBatch(batchId: string, actorEmail: string): PayoutBatch | Promise<PayoutBatch>;
+  reopenPayoutBatch(batchId: string, actorEmail: string): PayoutBatch | Promise<PayoutBatch>;
 };

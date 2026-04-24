@@ -211,6 +211,32 @@ try {
     'Billing summary did not return seeded subscription and invoice data.'
   );
 
+  const permissionMatrix = await invoke('GET', '/api/admin/permission-matrix', {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(permissionMatrix.status === 200, 'Permission matrix request failed.');
+  assert(
+    Array.isArray(permissionMatrix.body?.matrix) &&
+      permissionMatrix.body.matrix.some((row) => row.role === 'tenant_owner' && row.permissions.some((permission) => permission.key === 'approve_payouts' && permission.allowed === true)) &&
+      permissionMatrix.body.matrix.some((row) => row.role === 'sales_rep' && row.permissions.some((permission) => permission.key === 'approve_payouts' && permission.allowed === false)),
+    'Permission matrix did not return expected role coverage.'
+  );
+
+  const commissionsSummary = await invoke('GET', '/api/admin/commissions', {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(commissionsSummary.status === 200, 'Commission summary request failed.');
+  assert(
+    Array.isArray(commissionsSummary.body?.summaries) &&
+      commissionsSummary.body.summaries.some((summary) => summary.totalCommission > 0 && summary.overrideCommission >= 0) &&
+      commissionsSummary.body.summaries.some((summary) => summary.memberName.includes('Jordan') && summary.overrideCommission > 0),
+    'Commission summary did not return positive commission totals.'
+  );
+
   const updateBilling = await invoke('PUT', '/api/admin/billing/subscription', {
     headers: {
       'content-type': 'application/json',
@@ -413,6 +439,41 @@ try {
   assert(approvePayout.body?.batch?.status === 'approved', 'Payout batch did not move to approved.');
   payoutBatchStateResetNeeded = true;
 
+  const payoutExport = await invoke('GET', `/api/admin/payouts/${payoutBatchId}/export`, {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(payoutExport.status === 200, 'Payout export request failed.');
+  assert(
+    String(payoutExport.body || '').includes('batch_id,batch_label,payee'),
+    'Payout export did not return a CSV payload.'
+  );
+
+  const voidPayout = await invoke('POST', `/api/admin/payouts/${payoutBatchId}/void`, {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(voidPayout.status === 200, 'Payout void request failed.');
+  assert(voidPayout.body?.batch?.status === 'void', 'Payout batch did not move to void.');
+
+  const reopenPayout = await invoke('POST', `/api/admin/payouts/${payoutBatchId}/reopen`, {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(reopenPayout.status === 200, 'Payout reopen request failed.');
+  assert(reopenPayout.body?.batch?.status === 'draft', 'Payout batch did not reopen to draft.');
+
+  const reapprovePayout = await invoke('POST', `/api/admin/payouts/${payoutBatchId}/approve`, {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(reapprovePayout.status === 200, 'Payout reapprove request failed.');
+  assert(reapprovePayout.body?.batch?.status === 'approved', 'Reapproved payout batch did not return to approved.');
+
   const payPayout = await invoke('POST', `/api/admin/payouts/${payoutBatchId}/pay`, {
     headers: {
       cookie: sessionCookie
@@ -434,8 +495,29 @@ try {
       ) &&
       auditLogsAfterPayout.body.entries.some(
         (entry) => entry.actionKey === 'payout_batch.paid' && entry.entityId === payoutBatchId
+      ) &&
+      auditLogsAfterPayout.body.entries.some(
+        (entry) => entry.actionKey === 'payout_batch.voided' && entry.entityId === payoutBatchId
+      ) &&
+      auditLogsAfterPayout.body.entries.some(
+        (entry) => entry.actionKey === 'payout_batch.reopened' && entry.entityId === payoutBatchId
       ),
-    'Audit log did not capture payout approval and payment.'
+    'Audit log did not capture payout approval, void, reopen, and payment.'
+  );
+
+  const payoutHistory = await invoke('GET', `/api/admin/payouts/${payoutBatchId}/history`, {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(payoutHistory.status === 200, 'Payout history request failed.');
+  assert(
+    Array.isArray(payoutHistory.body?.entries) &&
+      payoutHistory.body.entries.some((entry) => entry.actionKey === 'payout_batch.approved') &&
+      payoutHistory.body.entries.some((entry) => entry.actionKey === 'payout_batch.voided') &&
+      payoutHistory.body.entries.some((entry) => entry.actionKey === 'payout_batch.reopened') &&
+      payoutHistory.body.entries.some((entry) => entry.actionKey === 'payout_batch.paid'),
+    'Payout history did not capture the expected events.'
   );
 
   const acceptInvitation = await invoke('POST', '/api/auth/accept-invitation', {
@@ -593,6 +675,7 @@ try {
           'payout item list',
           'commission snapshot list',
           'billing summary and invoice pay',
+          'permission matrix and commission summary',
           'password login and cookie session',
           'tenant user role denial',
           'sales group create and list',
@@ -600,7 +683,8 @@ try {
           'invitation create and list',
           'invitation delivery logging',
           'invitation revoke',
-          'payout approve and pay',
+          'payout approve, void, reopen, export, and pay',
+          'payout history capture',
           'invitation acceptance and invited login',
           'password reset request and completion',
           'login lockout',

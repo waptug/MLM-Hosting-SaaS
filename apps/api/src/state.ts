@@ -124,7 +124,7 @@ export type PayoutBatch = {
   id: string;
   periodLabel: string;
   scheduledFor: string;
-  status: 'draft' | 'approved' | 'paid';
+  status: 'draft' | 'approved' | 'paid' | 'void';
   payeeCount: number;
   totalAmount: number;
   approvedAt?: string | null;
@@ -471,6 +471,11 @@ export async function listAuditLogs(limit = 50): Promise<AuditLogEntry[]> {
   );
 
   return result.rows;
+}
+
+export async function listPayoutHistory(batchId: string, limit = 25): Promise<AuditLogEntry[]> {
+  const entries = await listAuditLogs(limit);
+  return entries.filter((entry) => entry.entityType === 'payout_batch' && entry.entityId === batchId);
 }
 
 export async function recordAuditLog(input: {

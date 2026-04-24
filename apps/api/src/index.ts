@@ -17,6 +17,7 @@ import {
 import { parseCookies, sessionCookieName } from './auth-security.js';
 import { config } from './config.js';
 import { demoTenant, demoUserEmail, demoUserPassword } from './demo-data.js';
+import { buildPermissionMatrix } from './permissions.js';
 import { businessRepository, businessRepositoryMode } from './repository-provider.js';
 import {
   addTenantUser,
@@ -32,6 +33,7 @@ import {
   listPayoutItems,
   listTenantInvitations,
   listTenantUsers,
+  listPayoutHistory,
   revokeTenantInvitation,
   markInvoicePaid,
   recordEmailDelivery,
@@ -230,10 +232,9 @@ app.get('/api/bootstrap', async (_req, res) => {
       storageProvider: config.storageProvider
     },
     nextBuildTargets: [
-      'approval-based payout workflows',
-      'billing and subscriptions',
-      'password reset and invite delivery',
-      'background jobs'
+      'background jobs',
+      'production observability',
+      'launch smoke tests'
     ]
   });
 });
@@ -489,6 +490,15 @@ app.get('/api/roles', (_req, res) => {
 app.get('/api/tenant-roles', (_req, res) => {
   res.json({ roles: tenantRoles });
 });
+
+app.get(
+  '/api/admin/permission-matrix',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager', 'finance_manager']),
+  (_req, res) => {
+    res.json({ matrix: buildPermissionMatrix() });
+  }
+);
 
 app.get('/api/session', attachTenantContext, (req, res) => {
   res.json({
@@ -1078,6 +1088,58 @@ app.get(
   }
 );
 
+app.get(
+  '/api/admin/payouts/:id/history',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager', 'finance_manager']),
+  async (req, res) => {
+    const batchId = String(req.params.id || '');
+    res.json({ entries: await listPayoutHistory(batchId) });
+  }
+);
+
+app.get(
+  '/api/admin/payouts/:id/export',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'tenant_manager', 'finance_manager']),
+  async (req, res) => {
+    const batchId = String(req.params.id || '');
+    const batches = await businessRepository.listPayoutBatches();
+    const batch = batches.find((entry) => entry.id === batchId);
+
+    if (!batch) {
+      res.status(404).json({ error: 'Payout batch not found.' });
+      return;
+    }
+
+    const items = (await listPayoutItems()).filter((item) => item.batchId === batchId);
+    const lines = [
+      'batch_id,batch_label,payee,line_label,source_summary,direct_commission,override_commission,total_amount,order_count,notes',
+      ...items.map((item) =>
+        [
+          batch.id,
+          batch.periodLabel,
+          item.payeeMemberName,
+          item.lineLabel,
+          item.sourceSummary,
+          item.directCommission.toFixed(2),
+          item.overrideCommission.toFixed(2),
+          item.totalAmount.toFixed(2),
+          item.orderCount,
+          item.notes
+        ]
+          .map((value) => `"${String(value).replace(/"/g, '""')}"`)
+          .join(',')
+      )
+    ];
+
+    res
+      .type('text/csv')
+      .setHeader('Content-Disposition', `attachment; filename="payout-${batch.periodLabel.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.csv"`)
+      .send(lines.join('\n'));
+  }
+);
+
 app.post(
   '/api/admin/payouts/:id/approve',
   attachTenantContext,
@@ -1101,6 +1163,56 @@ app.post(
     } catch (error) {
       res.status(400).json({
         error: error instanceof Error ? error.message : 'Unable to approve payout batch.'
+      });
+    }
+  }
+);
+
+app.post(
+  '/api/admin/payouts/:id/void',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'finance_manager']),
+  async (req, res) => {
+    const batchId = String(req.params.id || '');
+    try {
+      const batch = await businessRepository.voidPayoutBatch(batchId, req.tenantContext!.user.email);
+      await recordAuditLog({
+        actorEmail: req.tenantContext?.user.email,
+        actionKey: 'payout_batch.voided',
+        entityType: 'payout_batch',
+        entityId: batch.id,
+        summary: `Voided payout batch ${batch.periodLabel}.`,
+        details: { status: batch.status, totalAmount: batch.totalAmount }
+      });
+      res.json({ batch });
+    } catch (error) {
+      res.status(400).json({
+        error: error instanceof Error ? error.message : 'Unable to void payout batch.'
+      });
+    }
+  }
+);
+
+app.post(
+  '/api/admin/payouts/:id/reopen',
+  attachTenantContext,
+  requireRole(['tenant_owner', 'finance_manager']),
+  async (req, res) => {
+    const batchId = String(req.params.id || '');
+    try {
+      const batch = await businessRepository.reopenPayoutBatch(batchId, req.tenantContext!.user.email);
+      await recordAuditLog({
+        actorEmail: req.tenantContext?.user.email,
+        actionKey: 'payout_batch.reopened',
+        entityType: 'payout_batch',
+        entityId: batch.id,
+        summary: `Reopened payout batch ${batch.periodLabel}.`,
+        details: { status: batch.status, totalAmount: batch.totalAmount }
+      });
+      res.json({ batch });
+    } catch (error) {
+      res.status(400).json({
+        error: error instanceof Error ? error.message : 'Unable to reopen payout batch.'
       });
     }
   }
