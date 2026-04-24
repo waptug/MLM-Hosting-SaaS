@@ -41,7 +41,18 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.get('/api/bootstrap', async (_req, res) => {
-  const setup = await getTenantSetup();
+  const [setup, tenantUsers, salesGroups, members, customers, orders, commissionSummaries, payoutBatches] =
+    await Promise.all([
+      getTenantSetup(),
+      listTenantUsers(),
+      businessRepository.listSalesGroups(),
+      businessRepository.listMembers(),
+      businessRepository.listCustomers(),
+      businessRepository.listOrders(),
+      businessRepository.listCommissionSummary(),
+      businessRepository.listPayoutBatches()
+    ]);
+
   const bootstrapTenant: BootstrapTenant = {
     slug: setup.slug,
     name: setup.name,
@@ -49,20 +60,41 @@ app.get('/api/bootstrap', async (_req, res) => {
     status: setup.status,
     ownerEmail: setup.ownerEmail
   };
+
+  const activeOrders = orders.filter((order) => order.status === 'active');
+  const pendingOrders = orders.filter((order) => order.status === 'pending');
+  const activeRevenue = activeOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+  const pendingRevenue = pendingOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+  const draftPayoutTotal = payoutBatches
+    .filter((batch) => batch.status === 'draft')
+    .reduce((sum, batch) => sum + batch.totalAmount, 0);
+
   res.json({
     tenant: { ...bootstrapTenant, ...setup },
+    summary: {
+      userCount: tenantUsers.length,
+      salesGroupCount: salesGroups.length,
+      memberCount: members.length,
+      customerCount: customers.length,
+      activeOrderCount: activeOrders.length,
+      pendingOrderCount: pendingOrders.length,
+      activeRevenue,
+      pendingRevenue,
+      commissionPayeeCount: commissionSummaries.filter((entry) => entry.totalCommission > 0).length,
+      draftPayoutTotal
+    },
     capabilities: {
       multiTenant: true,
       whiteLabel: true,
-      payouts: 'planned',
-      commissionEngine: 'planned',
+      payouts: 'active_summary',
+      commissionEngine: 'active_summary',
       storageProvider: config.storageProvider
     },
     nextBuildTargets: [
-      'tenant tables and migrations',
-      'user auth and invitations',
-      'role-based access',
-      'tenant-scoped API middleware'
+      'password auth and invitations',
+      'approval-based payout workflows',
+      'audit logging',
+      'automated integration tests'
     ]
   });
 });
