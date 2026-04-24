@@ -77,6 +77,36 @@ DATABASE_URL=postgresql://mlm:mlm_dev_password@127.0.0.1:5433/mlm_hosting_saas n
 
 `npm run test:api` builds the database and API packages, then runs in-process integration checks against the Express app with the local Postgres database.
 
+## WSL Deployment To A Remote Server
+
+Copy the deploy template and set your SSH details:
+
+```bash
+cp .deploy.env.example .deploy.env
+```
+
+Then run a one-shot deploy:
+
+```bash
+npm run deploy
+```
+
+Or keep the server updated while you work locally:
+
+```bash
+npm run deploy:watch
+```
+
+The deploy flow:
+
+- builds the workspace
+- stages a pruned release bundle in `.deploy/`
+- auto-commits local changes if present
+- pushes to GitHub
+- rsyncs the staged release bundle to your server
+
+Set `DEPLOY_REMOTE_POST_SYNC` in `.deploy.env` if the server should run a post-sync command, such as a restart or migration step.
+
 ## Deployment Layout
 
 The `infra/` folder contains a local container layout for production-style runs:

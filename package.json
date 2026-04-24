@@ -13,6 +13,8 @@
     "dev:jobs": "npm run dev --workspace @mlm-hosting-saas/jobs",
     "start:api": "npm run start --workspace @mlm-hosting-saas/api",
     "db:migrate": "npm run migrate --workspace @mlm-hosting-saas/database",
+    "deploy": "bash scripts/deploy.sh",
+    "deploy:watch": "bash scripts/deploy-watch.sh",
     "test:api": "npm run build --workspace @mlm-hosting-saas/database && npm run build --workspace @mlm-hosting-saas/api && npm run test:integration --workspace @mlm-hosting-saas/api",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",

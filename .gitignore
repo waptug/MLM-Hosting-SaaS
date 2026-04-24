@@ -1,10 +1,11 @@
 node_modules/
 .env
 .env.*
+.deploy.env
+.deploy/
 dist/
 build/
 .turbo/
 .DS_Store
 coverage/
 *.log
-
