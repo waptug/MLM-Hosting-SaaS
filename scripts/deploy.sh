@@ -16,6 +16,7 @@ fi
 
 DEPLOY_SSH_PORT="${DEPLOY_SSH_PORT:-22}"
 DEPLOY_SSH_PASSWORD="${DEPLOY_SSH_PASSWORD:-}"
+DEPLOY_PUBLIC_DIR="${DEPLOY_PUBLIC_DIR:-/home/www}"
 DEPLOY_GIT_BRANCH="${DEPLOY_GIT_BRANCH:-main}"
 DEPLOY_AUTO_COMMIT="${DEPLOY_AUTO_COMMIT:-1}"
 DEPLOY_COMMIT_PREFIX="${DEPLOY_COMMIT_PREFIX:-Deploy}"
@@ -91,6 +92,15 @@ if [[ -n "$DEPLOY_SSH_PASSWORD" ]]; then
 else
   ssh -p "$DEPLOY_SSH_PORT" "$remote_target" "mkdir -p '$DEPLOY_REMOTE_DIR'"
   rsync -az --delete -e "ssh -p $DEPLOY_SSH_PORT" "$release_dir/" "$remote_target:$DEPLOY_REMOTE_DIR/"
+fi
+
+echo "Syncing built web artifact to ${remote_target}:${DEPLOY_PUBLIC_DIR}"
+if [[ -n "$DEPLOY_SSH_PASSWORD" ]]; then
+  env DISPLAY=none SSH_ASKPASS="$temp_askpass" SSH_ASKPASS_REQUIRE=force setsid -w ssh "${SSH_ARGS[@]}" "$remote_target" "mkdir -p '$DEPLOY_PUBLIC_DIR'"
+  rsync -az --delete -e "$RSYNC_SSH_CMD" "$ROOT_DIR/apps/web/dist/" "$remote_target:$DEPLOY_PUBLIC_DIR/"
+else
+  ssh -p "$DEPLOY_SSH_PORT" "$remote_target" "mkdir -p '$DEPLOY_PUBLIC_DIR'"
+  rsync -az --delete -e "ssh -p $DEPLOY_SSH_PORT" "$ROOT_DIR/apps/web/dist/" "$remote_target:$DEPLOY_PUBLIC_DIR/"
 fi
 
 if [[ -n "$DEPLOY_REMOTE_POST_SYNC" ]]; then

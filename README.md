@@ -107,6 +107,7 @@ The deploy flow:
 - auto-commits local changes if present
 - pushes to GitHub
 - rsyncs the staged release bundle to your server
+- rsyncs the built web artifact to the public web root, defaulting to `/home/www`
 
 Set `DEPLOY_REMOTE_POST_SYNC` in `.deploy.env` if the server should run a post-sync command, such as a restart or migration step.
 
