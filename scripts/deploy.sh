@@ -63,6 +63,11 @@ if [[ "$DEPLOY_TRANSPORT" == "ftp" ]]; then
   : "${DEPLOY_FTP_USER:?Set DEPLOY_FTP_USER in .deploy.env}"
   : "${DEPLOY_FTP_PASSWORD:?Set DEPLOY_FTP_PASSWORD in .deploy.env}"
 fi
+if [[ "$DEPLOY_TRANSPORT" == "sftp" ]]; then
+  : "${DEPLOY_SSH_USER:?Set DEPLOY_SSH_USER in .deploy.env}"
+  : "${DEPLOY_SSH_HOST:?Set DEPLOY_SSH_HOST in .deploy.env}"
+  : "${DEPLOY_REMOTE_DIR:?Set DEPLOY_REMOTE_DIR in .deploy.env}"
+fi
 
 SSH_ARGS=(-p "$DEPLOY_SSH_PORT" -o StrictHostKeyChecking=accept-new)
 
@@ -146,9 +151,35 @@ upload_dir_via_ftp() {
   done
 }
 
+upload_dir_via_sftp() {
+  local source_dir="$1"
+  local remote_dir="$2"
+  local batch_file
+  batch_file="$(mktemp "$ROOT_DIR/.deploy/sftp-batch.XXXXXX.txt")"
+  trap 'rm -f "$batch_file"' RETURN
+
+  {
+    printf 'cd %s\n' "$remote_dir"
+    find "$source_dir" -mindepth 1 -maxdepth 1 -print0 | while IFS= read -r -d '' entry; do
+      if [[ -d "$entry" ]]; then
+        printf 'put -r %s %s/\n' "$entry" "$remote_dir"
+      else
+        printf 'put %s %s/\n' "$entry" "$remote_dir"
+      fi
+    done
+  } >"$batch_file"
+
+  env DISPLAY=none SSH_ASKPASS="$temp_askpass" SSH_ASKPASS_REQUIRE=force setsid -w sftp -b "$batch_file" -P "$DEPLOY_SSH_PORT" -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password -o PubkeyAuthentication=no "${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}"
+}
+
 if [[ "$DEPLOY_TRANSPORT" == "ftp" ]]; then
   echo "Uploading web build via FTP to ${DEPLOY_FTP_HOST}:${DEPLOY_FTP_PORT}${DEPLOY_FTP_PUBLIC_DIR}"
   upload_dir_via_ftp "$release_dir/apps/web/dist" "$DEPLOY_FTP_PUBLIC_DIR"
+elif [[ "$DEPLOY_TRANSPORT" == "sftp" ]]; then
+  echo "Uploading release bundle via SFTP to ${DEPLOY_SSH_HOST}:${DEPLOY_SSH_PORT}${DEPLOY_REMOTE_DIR}"
+  upload_dir_via_sftp "$release_dir" "$DEPLOY_REMOTE_DIR"
+  echo "Uploading web build via SFTP to public root ${DEPLOY_SSH_HOST}:${DEPLOY_SSH_PORT}${DEPLOY_PUBLIC_DIR}"
+  upload_dir_via_sftp "$release_dir/apps/web/dist" "$DEPLOY_PUBLIC_DIR"
 elif [[ "$DEPLOY_TRANSPORT" == "ssh" ]]; then
   remote_target="${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}"
   remote_command="mkdir -p '$DEPLOY_REMOTE_DIR' '$DEPLOY_PUBLIC_DIR' && cd '$DEPLOY_REMOTE_DIR' && "
