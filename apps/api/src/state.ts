@@ -12,6 +12,10 @@ export type TenantSetup = {
   supportEmail: string;
   brandLabel: string;
   primaryDomain: string;
+  logoUrl: string;
+  emailFromName: string;
+  emailReplyTo: string;
+  emailFooter: string;
 };
 
 export type TenantSubscription = {
@@ -248,6 +252,10 @@ export async function getTenantSetup() {
     supportEmail: string;
     brandLabel: string;
     primaryDomain: string;
+    logoUrl: string;
+    emailFromName: string;
+    emailReplyTo: string;
+    emailFooter: string;
   }>(
     `
       SELECT
@@ -258,7 +266,11 @@ export async function getTenantSetup() {
         owner.email AS "ownerEmail",
         t.support_email AS "supportEmail",
         t.brand_label AS "brandLabel",
-        t.primary_domain AS "primaryDomain"
+        t.primary_domain AS "primaryDomain",
+        t.logo_url AS "logoUrl",
+        t.email_from_name AS "emailFromName",
+        t.email_reply_to AS "emailReplyTo",
+        t.email_footer AS "emailFooter"
       FROM tenants t
       LEFT JOIN users owner ON owner.id = t.owner_user_id
       WHERE t.slug = $1
@@ -279,7 +291,11 @@ export async function getTenantSetup() {
     ownerEmail: row.ownerEmail || '',
     supportEmail: row.supportEmail,
     brandLabel: row.brandLabel,
-    primaryDomain: row.primaryDomain
+    primaryDomain: row.primaryDomain,
+    logoUrl: row.logoUrl,
+    emailFromName: row.emailFromName,
+    emailReplyTo: row.emailReplyTo,
+    emailFooter: row.emailFooter
   } satisfies TenantSetup;
 }
 
@@ -296,7 +312,11 @@ export async function updateTenantSetup(input: Partial<TenantSetup>) {
     ownerEmail: input.ownerEmail || current.ownerEmail,
     supportEmail: input.supportEmail || current.supportEmail,
     brandLabel: input.brandLabel || current.brandLabel,
-    primaryDomain: input.primaryDomain || current.primaryDomain
+    primaryDomain: input.primaryDomain || current.primaryDomain,
+    logoUrl: input.logoUrl || current.logoUrl,
+    emailFromName: input.emailFromName || current.emailFromName,
+    emailReplyTo: input.emailReplyTo || current.emailReplyTo,
+    emailFooter: input.emailFooter || current.emailFooter
   };
 
   let ownerUserId: string | null = null;
@@ -319,6 +339,10 @@ export async function updateTenantSetup(input: Partial<TenantSetup>) {
         support_email = $7,
         brand_label = $8,
         primary_domain = $9,
+        logo_url = $10,
+        email_from_name = $11,
+        email_reply_to = $12,
+        email_footer = $13,
         updated_at = NOW()
       WHERE id = $1
     `,
@@ -331,7 +355,11 @@ export async function updateTenantSetup(input: Partial<TenantSetup>) {
       ownerUserId,
       nextSetup.supportEmail,
       nextSetup.brandLabel,
-      nextSetup.primaryDomain
+      nextSetup.primaryDomain,
+      nextSetup.logoUrl,
+      nextSetup.emailFromName,
+      nextSetup.emailReplyTo,
+      nextSetup.emailFooter
     ]
   );
 
@@ -528,6 +556,7 @@ export async function createTenantInvitation(input: {
   firstName: string;
   lastName: string;
   role: RoleKey;
+  expiresInDays?: number;
 }) {
   const pool = await getPool();
   const id = await tenantId(pool);
@@ -556,7 +585,8 @@ export async function createTenantInvitation(input: {
 
   const invitationId = randomUUID();
   const invitationToken = randomUUID().replace(/-/g, '');
-  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString();
+  const expiresInDays = Math.max(1, Math.min(90, Number(input.expiresInDays || 7)));
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * expiresInDays).toISOString();
 
   await pool.query(
     `

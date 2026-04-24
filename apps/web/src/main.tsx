@@ -50,6 +50,10 @@ type TenantSetup = {
   supportEmail: string;
   brandLabel: string;
   primaryDomain: string;
+  logoUrl: string;
+  emailFromName: string;
+  emailReplyTo: string;
+  emailFooter: string;
 };
 
 type TenantUser = {
@@ -345,7 +349,11 @@ const blankSetup: TenantSetup = {
   ownerEmail: '',
   supportEmail: '',
   brandLabel: '',
-  primaryDomain: ''
+  primaryDomain: '',
+  logoUrl: '',
+  emailFromName: '',
+  emailReplyTo: '',
+  emailFooter: ''
 };
 
 const manualSections: ManualSection[] = [
@@ -439,24 +447,7 @@ const manualSections: ManualSection[] = [
 
 const productionTodoGroups: TodoGroup[] = [
   {
-    title: '1. Real user lifecycle',
-    items: ['invite expiration and revocation UI']
-  },
-  {
-    title: '2. Security and compliance',
-    items: [
-      'audit coverage for all mutating actions',
-      'secrets and environment management',
-      'backup and restore',
-      'retention policy and privacy controls'
-    ]
-  },
-  {
-    title: '3. Operations and deployment',
-    items: ['staging environment']
-  },
-  {
-    title: '4. Testing depth',
+    title: '2. Testing depth',
     items: [
       'broader API integration coverage',
       'UI and browser tests for login, invitations, and payouts',
@@ -465,15 +456,14 @@ const productionTodoGroups: TodoGroup[] = [
     ]
   },
   {
-    title: '5. Commission system hardening',
+    title: '3. Commission system hardening',
     items: [
-      'configurable multilevel rules',
       'qualification logic by rank, volume, and group',
       'historical commission snapshots so rule changes do not rewrite prior payouts'
     ]
   },
   {
-    title: '6. Payout operations',
+    title: '4. Payout operations',
     items: [
       'reconciliation and approval history',
       'export for accounting',
@@ -482,17 +472,7 @@ const productionTodoGroups: TodoGroup[] = [
     ]
   },
   {
-    title: '7. White-label SaaS controls',
-    items: [
-      'tenant branding upload',
-      'custom domains',
-      'branded email templates',
-      'tenant-specific plan and catalog configuration',
-      'tenant provisioning flow for new reseller accounts'
-    ]
-  },
-  {
-    title: '8. Product polish',
+    title: '5. Product polish',
     items: [
       'pagination, filtering, and search on admin screens',
       'better finance workflow UX'
@@ -501,9 +481,11 @@ const productionTodoGroups: TodoGroup[] = [
 ];
 
 const productionLaunchOrder = [
-  'Invitation expiration and revocation UI',
   'Browser and permission coverage',
-  'Remaining white-label controls'
+  'Testing depth',
+  'Commission system hardening',
+  'Payout operations',
+  'Product polish'
 ];
 
 const deepDiveSections: DeepDiveSection[] = [
@@ -641,6 +623,22 @@ function OnboardingPanel({ setup, onSaved }: { setup: TenantSetup | null; onSave
           <input value={form.primaryDomain} onChange={(event) => setField('primaryDomain', event.target.value)} />
         </label>
         <label>
+          Logo URL
+          <input value={form.logoUrl} onChange={(event) => setField('logoUrl', event.target.value)} />
+        </label>
+        <label>
+          Email from name
+          <input value={form.emailFromName} onChange={(event) => setField('emailFromName', event.target.value)} />
+        </label>
+        <label>
+          Reply-to email
+          <input value={form.emailReplyTo} onChange={(event) => setField('emailReplyTo', event.target.value)} />
+        </label>
+        <label className="full-width">
+          Email footer
+          <textarea value={form.emailFooter} onChange={(event) => setField('emailFooter', event.target.value)} rows={3} />
+        </label>
+        <label>
           Owner email
           <input value={form.ownerEmail} onChange={(event) => setField('ownerEmail', event.target.value)} />
         </label>
@@ -711,6 +709,22 @@ function OverviewPanel({ session, setup }: { session: SessionPayload | null; set
               <div>
                 <dt>Domain</dt>
                 <dd>{setup.primaryDomain}</dd>
+              </div>
+              <div>
+                <dt>Logo</dt>
+                <dd>{setup.logoUrl || 'not set'}</dd>
+              </div>
+              <div>
+                <dt>Email From</dt>
+                <dd>{setup.emailFromName || 'not set'}</dd>
+              </div>
+              <div>
+                <dt>Reply To</dt>
+                <dd>{setup.emailReplyTo || 'not set'}</dd>
+              </div>
+              <div className="full-width">
+                <dt>Email Footer</dt>
+                <dd>{setup.emailFooter || 'not set'}</dd>
               </div>
             </>
           ) : null}
@@ -857,7 +871,8 @@ function InvitationsPanel({
     email: '',
     firstName: '',
     lastName: '',
-    role: tenantRoles[0] || 'sales_rep'
+    role: tenantRoles[0] || 'sales_rep',
+    expiresInDays: '7'
   });
   const [saving, setSaving] = React.useState(false);
   const [sendingInvitationId, setSendingInvitationId] = React.useState('');
@@ -870,7 +885,7 @@ function InvitationsPanel({
     }
   }, [tenantRoles, form.role]);
 
-  function setField(field: 'email' | 'firstName' | 'lastName' | 'role', value: string) {
+  function setField(field: 'email' | 'firstName' | 'lastName' | 'role' | 'expiresInDays', value: string) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
@@ -897,7 +912,8 @@ function InvitationsPanel({
       email: '',
       firstName: '',
       lastName: '',
-      role: tenantRoles[0] || 'sales_rep'
+      role: tenantRoles[0] || 'sales_rep',
+      expiresInDays: '7'
     });
   }
 
@@ -954,6 +970,7 @@ function InvitationsPanel({
                 <p>
                   {invitation.email} · {invitation.role} · invited by {invitation.invitedByEmail || 'system'}
                 </p>
+                <p>expires: {new Date(invitation.expiresAt).toLocaleString()}</p>
                 {invitation.acceptanceToken ? <p>token: {invitation.acceptanceToken}</p> : null}
               </div>
               <div className="batch-actions">
@@ -1004,6 +1021,16 @@ function InvitationsPanel({
                 </option>
               ))}
             </select>
+          </label>
+          <label>
+            Expires in days
+            <input
+              type="number"
+              min={1}
+              max={90}
+              value={form.expiresInDays}
+              onChange={(event) => setField('expiresInDays', event.target.value)}
+            />
           </label>
           <label>
             First name

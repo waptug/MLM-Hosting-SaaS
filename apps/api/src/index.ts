@@ -457,7 +457,11 @@ app.put(
       ownerEmail: String(payload.ownerEmail || '').trim() || currentSetup.ownerEmail,
       supportEmail: String(payload.supportEmail || '').trim() || currentSetup.supportEmail,
       brandLabel: String(payload.brandLabel || '').trim() || currentSetup.brandLabel,
-      primaryDomain: String(payload.primaryDomain || '').trim() || currentSetup.primaryDomain
+      primaryDomain: String(payload.primaryDomain || '').trim() || currentSetup.primaryDomain,
+      logoUrl: String(payload.logoUrl || '').trim() || currentSetup.logoUrl,
+      emailFromName: String(payload.emailFromName || '').trim() || currentSetup.emailFromName,
+      emailReplyTo: String(payload.emailReplyTo || '').trim() || currentSetup.emailReplyTo,
+      emailFooter: String(payload.emailFooter || '').trim() || currentSetup.emailFooter
     });
 
     const setup = await nextSetup;
@@ -617,7 +621,8 @@ app.post(
         email,
         firstName,
         lastName,
-        role: role as (typeof tenantRoles)[number]
+        role: role as (typeof tenantRoles)[number],
+        expiresInDays: Number(body.expiresInDays || 7)
       });
 
       await recordAuditLog({

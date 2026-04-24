@@ -312,7 +312,11 @@ async function listCommissionSummaryQuery(pool: DbPool) {
   const { tenantId } = await tenantContext(pool);
   const rules = await listCommissionRules();
   const overrideRule = rules.find((rule) => rule.ruleType === 'override' && rule.levelNumber === 1);
-  const overrideRate = overrideRule?.percentRate ?? 0.05;
+  const levelTwoRule = rules.find((rule) => rule.ruleType === 'override' && rule.levelNumber === 2);
+  const levelOneRate = overrideRule?.percentRate ?? 0.05;
+  const levelTwoRate = levelTwoRule?.percentRate ?? 0.02;
+  const levelOneMinActiveOrders = parseInt((overrideRule?.rankFloor || '').match(/active-orders>=(\d+)/)?.[1] || '0', 10);
+  const levelTwoMinActiveOrders = parseInt((levelTwoRule?.rankFloor || '').match(/active-orders>=(\d+)/)?.[1] || '0', 10);
   const result = await pool.query<{
     memberId: string;
     memberName: string;
@@ -341,13 +345,42 @@ async function listCommissionSummaryQuery(pool: DbPool) {
         WHERE m.tenant_id = $1
         GROUP BY m.id
       ),
-      override_totals AS (
+      level_one_totals AS (
         SELECT
-        sponsor.id AS member_id,
-          COALESCE(SUM(ao.quantity * ao.unit_price * $2), 0)::text AS override_commission
+          sponsor.id AS member_id,
+          COALESCE(
+            SUM(
+              CASE
+                WHEN COALESCE(sponsor_dt.active_orders::int, 0) >= $4 THEN ao.quantity * ao.unit_price * $2
+                ELSE 0
+              END
+            ),
+            0
+          )::text AS level_one_override
         FROM members sponsor
+        LEFT JOIN direct_totals sponsor_dt ON sponsor_dt.member_id = sponsor.id
         LEFT JOIN members seller ON seller.sponsor_member_id = sponsor.id
         LEFT JOIN active_orders ao ON ao.selling_member_id = seller.id
+        WHERE sponsor.tenant_id = $1
+        GROUP BY sponsor.id
+      ),
+      level_two_totals AS (
+        SELECT
+          sponsor.id AS member_id,
+          COALESCE(
+            SUM(
+              CASE
+                WHEN COALESCE(sponsor_dt.active_orders::int, 0) >= $5 THEN ao.quantity * ao.unit_price * $3
+                ELSE 0
+              END
+            ),
+            0
+          )::text AS level_two_override
+        FROM members sponsor
+        LEFT JOIN direct_totals sponsor_dt ON sponsor_dt.member_id = sponsor.id
+        LEFT JOIN members first_level ON first_level.sponsor_member_id = sponsor.id
+        LEFT JOIN members second_level ON second_level.sponsor_member_id = first_level.id
+        LEFT JOIN active_orders ao ON ao.selling_member_id = second_level.id
         WHERE sponsor.tenant_id = $1
         GROUP BY sponsor.id
       )
@@ -361,16 +394,17 @@ async function listCommissionSummaryQuery(pool: DbPool) {
         dt.active_orders AS "activeOrders",
         dt.direct_revenue AS "directRevenue",
         dt.direct_commission AS "directCommission",
-        ot.override_commission AS "overrideCommission",
-        (dt.direct_commission::numeric + ot.override_commission::numeric)::text AS "totalCommission"
+        (l1.level_one_override::numeric + l2.level_two_override::numeric)::text AS "overrideCommission",
+        (dt.direct_commission::numeric + l1.level_one_override::numeric + l2.level_two_override::numeric)::text AS "totalCommission"
       FROM members m
       JOIN direct_totals dt ON dt.member_id = m.id
-      JOIN override_totals ot ON ot.member_id = m.id
+      JOIN level_one_totals l1 ON l1.member_id = m.id
+      JOIN level_two_totals l2 ON l2.member_id = m.id
       LEFT JOIN members sponsor ON sponsor.id = m.sponsor_member_id
       WHERE m.tenant_id = $1
-      ORDER BY (dt.direct_commission::numeric + ot.override_commission::numeric) DESC, m.last_name
+      ORDER BY (dt.direct_commission::numeric + l1.level_one_override::numeric + l2.level_two_override::numeric) DESC, m.last_name
     `,
-    [tenantId, overrideRate]
+    [tenantId, levelOneRate, levelTwoRate, levelOneMinActiveOrders, levelTwoMinActiveOrders]
   );
 
   return result.rows.map((row) => ({

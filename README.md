@@ -82,6 +82,7 @@ DATABASE_URL=postgresql://mlm:mlm_dev_password@127.0.0.1:5433/mlm_hosting_saas n
 The `infra/` folder contains a local container layout for production-style runs:
 
 - `infra/compose.yml`
+- `infra/compose.staging.yml`
 - `infra/api.Dockerfile`
 - `infra/web.Dockerfile`
 - `infra/nginx.conf`
@@ -112,3 +113,7 @@ The compose file runs PostgreSQL, the API, and the web app with the web server p
 ## Planning
 
 See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md).
+
+## Operations
+
+See [docs/production-operations.md](./docs/production-operations.md) for deployment, backup, retention, and environment guidance.

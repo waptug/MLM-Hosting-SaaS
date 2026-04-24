@@ -1,0 +1,17 @@
+services:
+  postgres:
+    ports:
+      - "5434:5432"
+
+  api:
+    environment:
+      NODE_ENV: staging
+      PORT: 4001
+      WEB_PORT: 8081
+      TRUSTED_ORIGINS: http://localhost:8081,http://127.0.0.1:8081
+    ports:
+      - "4001:4001"
+
+  web:
+    ports:
+      - "8081:80"

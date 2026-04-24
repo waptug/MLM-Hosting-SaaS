@@ -64,6 +64,18 @@ VALUES
     'Applies to direct sponsor commission on active orders.'
   ),
   (
+    '00000000-0000-0000-0000-000000000714',
+    '00000000-0000-0000-0000-000000000701',
+    'level-2-override',
+    'Level 2 Sponsor Override',
+    'override',
+    2,
+    0.0200,
+    0,
+    'active-orders>=2',
+    'Applies to second-level sponsor commission on active orders.'
+  ),
+  (
     '00000000-0000-0000-0000-000000000713',
     '00000000-0000-0000-0000-000000000701',
     'payout-approval',

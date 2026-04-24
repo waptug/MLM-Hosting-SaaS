@@ -29,6 +29,7 @@ let createdAcceptedUserEmail = null;
 let payoutBatchStateResetNeeded = false;
 let billingInvoiceStateResetNeeded = false;
 let billingSubscriptionCancelResetNeeded = false;
+let originalTenantSetup = null;
 const payoutBatchId = '00000000-0000-0000-0000-000000000601';
 const billingInvoiceId = '00000000-0000-0000-0000-000000000811';
 const uniqueSuffix = randomUUID().slice(0, 8).toUpperCase();
@@ -123,6 +124,41 @@ try {
     'Finance role payout capability missing.'
   );
 
+  const onboardingBeforeUpdate = await invoke('GET', '/api/admin/onboarding', {
+    headers: {
+      cookie: sessionCookie
+    }
+  });
+  assert(onboardingBeforeUpdate.status === 200, 'Onboarding read request failed.');
+  originalTenantSetup = onboardingBeforeUpdate.body?.setup || null;
+
+  const onboardingUpdate = await invoke('PUT', '/api/admin/onboarding', {
+    headers: {
+      'content-type': 'application/json',
+      cookie: sessionCookie
+    },
+    body: {
+      slug: 'demo-hosting-group',
+      name: 'Demo Hosting Group',
+      themePreset: 'forest',
+      status: 'active',
+      ownerEmail: 'owner@example.com',
+      supportEmail: 'support@demo-hosting-group.example',
+      brandLabel: 'Demo Hosting Group',
+      primaryDomain: 'demo-hosting-group.example',
+      logoUrl: 'https://cdn.example.com/logo.png',
+      emailFromName: 'Demo Hosting Group',
+      emailReplyTo: 'support@demo-hosting-group.example',
+      emailFooter: 'Thanks for partnering with Demo Hosting Group.'
+    }
+  });
+  assert(onboardingUpdate.status === 200, 'Onboarding update request failed.');
+  assert(onboardingUpdate.body?.setup?.logoUrl === 'https://cdn.example.com/logo.png', 'Logo URL did not persist.');
+  assert(
+    onboardingUpdate.body?.setup?.emailFromName === 'Demo Hosting Group',
+    'Email from name did not persist.'
+  );
+
   const commissionPlans = await invoke('GET', '/api/admin/commission-plans', {
     headers: {
       cookie: sessionCookie
@@ -133,7 +169,8 @@ try {
     Array.isArray(commissionPlans.body?.plans) &&
       commissionPlans.body.plans.some((plan) => plan.planName === 'Default Hosting Commission Plan') &&
       Array.isArray(commissionPlans.body?.rules) &&
-      commissionPlans.body.rules.some((rule) => rule.ruleKey === 'level-1-override'),
+      commissionPlans.body.rules.some((rule) => rule.ruleKey === 'level-1-override') &&
+      commissionPlans.body.rules.some((rule) => rule.ruleKey === 'level-2-override'),
     'Commission plan list did not return the seeded plan and rules.'
   );
 
@@ -281,13 +318,15 @@ try {
       email: `invite-${uniqueSuffix.toLowerCase()}@example.com`,
       firstName: 'Invite',
       lastName: uniqueSuffix,
-      role: 'sales_rep'
+      role: 'sales_rep',
+      expiresInDays: 2
     }
   });
   assert(createInvitation.status === 201, 'Invitation create request failed.');
   createdInvitationId = createInvitation.body?.invitation?.id ?? null;
   createdAcceptedUserEmail = createInvitation.body?.invitation?.email ?? null;
   assert(createdInvitationId, 'Created invitation did not return an id.');
+  assert(createInvitation.body?.invitation?.expiresAt, 'Created invitation did not return an expiration date.');
   assert(createInvitation.body?.invitation?.acceptanceToken, 'Created invitation did not return an acceptance token.');
 
   const sendInvitation = await invoke('POST', `/api/admin/invitations/${createdInvitationId}/send`, {
@@ -335,7 +374,8 @@ try {
       email: `revoked-${uniqueSuffix.toLowerCase()}@example.com`,
       firstName: 'Revoked',
       lastName: uniqueSuffix,
-      role: 'sales_rep'
+      role: 'sales_rep',
+      expiresInDays: 1
     }
   });
   assert(createRevokedInvitation.status === 201, 'Revoked invitation create request failed.');
@@ -548,6 +588,7 @@ try {
           'bootstrap',
           'session',
           'finance tenant context',
+          'onboarding branding',
           'commission plan list',
           'payout item list',
           'commission snapshot list',
@@ -618,6 +659,44 @@ try {
       'tenant_subscription',
       'billing.subscription.updated'
     ]);
+  }
+
+  if (originalTenantSetup) {
+    await pool.query(
+      `
+        UPDATE tenants
+        SET
+          slug = $2,
+          name = $3,
+          theme_preset = $4,
+          status = $5,
+          owner_user_id = (SELECT id FROM users WHERE email = $6),
+          support_email = $7,
+          brand_label = $8,
+          primary_domain = $9,
+          logo_url = $10,
+          email_from_name = $11,
+          email_reply_to = $12,
+          email_footer = $13,
+          updated_at = NOW()
+        WHERE id = $1
+      `,
+      [
+        '00000000-0000-0000-0000-000000000001',
+        originalTenantSetup.slug,
+        originalTenantSetup.name,
+        originalTenantSetup.themePreset,
+        originalTenantSetup.status,
+        originalTenantSetup.ownerEmail,
+        originalTenantSetup.supportEmail,
+        originalTenantSetup.brandLabel,
+        originalTenantSetup.primaryDomain,
+        originalTenantSetup.logoUrl || '',
+        originalTenantSetup.emailFromName || '',
+        originalTenantSetup.emailReplyTo || '',
+        originalTenantSetup.emailFooter || ''
+      ]
+    );
   }
 
   if (passwordResetTokenForOwner) {

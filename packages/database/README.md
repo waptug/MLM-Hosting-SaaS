@@ -48,6 +48,9 @@ Current starter migration:
 - [0020_tenant_subscriptions.sql](./0020_tenant_subscriptions.sql)
 - [0021_demo_tenant_subscription.sql](./0021_demo_tenant_subscription.sql)
 - [0022_login_security_states.sql](./0022_login_security_states.sql)
+- [0023_tenant_branding_and_email_fields.sql](./0023_tenant_branding_and_email_fields.sql)
+- [0024_demo_level_two_commission_rule.sql](./0024_demo_level_two_commission_rule.sql)
+- [0025_demo_level_two_commission_qualification.sql](./0025_demo_level_two_commission_qualification.sql)
 
 Core entity coverage now includes:
 
