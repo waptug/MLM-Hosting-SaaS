@@ -21,6 +21,11 @@ DEPLOY_GIT_BRANCH="${DEPLOY_GIT_BRANCH:-main}"
 DEPLOY_AUTO_COMMIT="${DEPLOY_AUTO_COMMIT:-1}"
 DEPLOY_COMMIT_PREFIX="${DEPLOY_COMMIT_PREFIX:-Deploy}"
 DEPLOY_REMOTE_POST_SYNC="${DEPLOY_REMOTE_POST_SYNC:-}"
+DEPLOY_REMOTE_API_PORT="${DEPLOY_REMOTE_API_PORT:-4000}"
+DEPLOY_REMOTE_WEB_ORIGIN="${DEPLOY_REMOTE_WEB_ORIGIN:-https://geekzonehosting.ai}"
+DEPLOY_REMOTE_API_ORIGIN="${DEPLOY_REMOTE_API_ORIGIN:-http://127.0.0.1:4000}"
+DEPLOY_REMOTE_DB_URL="${DEPLOY_REMOTE_DB_URL:-}"
+DEPLOY_REMOTE_SESSION_SECRET="${DEPLOY_REMOTE_SESSION_SECRET:-}"
 
 timestamp="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
 release_dir="$ROOT_DIR/.deploy/release-$timestamp"
@@ -110,6 +115,16 @@ if [[ -n "$DEPLOY_REMOTE_POST_SYNC" ]]; then
   else
     ssh -p "$DEPLOY_SSH_PORT" "$remote_target" "cd '$DEPLOY_REMOTE_DIR' && $DEPLOY_REMOTE_POST_SYNC"
   fi
+elif [[ -n "$DEPLOY_REMOTE_DB_URL" && -n "$DEPLOY_REMOTE_SESSION_SECRET" ]]; then
+  echo "Running default remote post-sync command..."
+  remote_post_sync_cmd="DATABASE_URL='${DEPLOY_REMOTE_DB_URL}' SESSION_SECRET='${DEPLOY_REMOTE_SESSION_SECRET}' TRUSTED_ORIGINS='${DEPLOY_REMOTE_WEB_ORIGIN},${DEPLOY_REMOTE_API_ORIGIN}' WEB_PORT='80' PORT='${DEPLOY_REMOTE_API_PORT}' npm run db:migrate && (pkill -f 'npm run start:api' || true; nohup env DATABASE_URL='${DEPLOY_REMOTE_DB_URL}' SESSION_SECRET='${DEPLOY_REMOTE_SESSION_SECRET}' TRUSTED_ORIGINS='${DEPLOY_REMOTE_WEB_ORIGIN},${DEPLOY_REMOTE_API_ORIGIN}' WEB_PORT='80' PORT='${DEPLOY_REMOTE_API_PORT}' npm run start:api >/tmp/mlm-hosting-saas-api.log 2>&1 &)"
+  if [[ -n "$DEPLOY_SSH_PASSWORD" ]]; then
+    env DISPLAY=none SSH_ASKPASS="$temp_askpass" SSH_ASKPASS_REQUIRE=force setsid -w ssh "${SSH_ARGS[@]}" "$remote_target" "cd '$DEPLOY_REMOTE_DIR' && $remote_post_sync_cmd"
+  else
+    ssh -p "$DEPLOY_SSH_PORT" "$remote_target" "cd '$DEPLOY_REMOTE_DIR' && $remote_post_sync_cmd"
+  fi
+else
+  echo "Skipping remote post-sync because DEPLOY_REMOTE_POST_SYNC is empty and remote DB/session values are not set."
 fi
 
 echo "Deployment complete."

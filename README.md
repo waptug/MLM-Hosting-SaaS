@@ -110,6 +110,7 @@ The deploy flow:
 - rsyncs the built web artifact to the public web root, defaulting to `/home/www`
 
 Set `DEPLOY_REMOTE_POST_SYNC` in `.deploy.env` if the server should run a post-sync command, such as a restart or migration step.
+If you leave `DEPLOY_REMOTE_POST_SYNC` empty, the script will run a default post-sync command only when `DEPLOY_REMOTE_DB_URL` and `DEPLOY_REMOTE_SESSION_SECRET` are set. Otherwise it will skip the remote post-sync step.
 
 ## Deployment Layout
 
