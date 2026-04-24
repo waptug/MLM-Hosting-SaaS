@@ -86,6 +86,7 @@ cp .deploy.env.example .deploy.env
 ```
 
 If you are using password-based SSH for the server, set `DEPLOY_SSH_PASSWORD` in `.deploy.env`. If you are using an SSH key, leave it empty.
+Wrap the password in quotes if it contains shell characters such as `#`.
 
 Then run a one-shot deploy:
 
