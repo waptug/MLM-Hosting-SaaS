@@ -126,7 +126,7 @@ if [[ -n "$DEPLOY_REMOTE_POST_SYNC" ]]; then
   remote_command+=" $DEPLOY_REMOTE_POST_SYNC && $publish_command"
 elif [[ -n "$DEPLOY_REMOTE_DB_URL" && -n "$DEPLOY_REMOTE_SESSION_SECRET" ]]; then
   echo "Running default remote post-sync command..."
-  remote_command+="DATABASE_URL='${DEPLOY_REMOTE_DB_URL}' SESSION_SECRET='${DEPLOY_REMOTE_SESSION_SECRET}' TRUSTED_ORIGINS='${DEPLOY_REMOTE_WEB_ORIGIN},${DEPLOY_REMOTE_API_ORIGIN}' WEB_PORT='80' PORT='${DEPLOY_REMOTE_API_PORT}' npm run db:migrate && (pkill -f 'npm run start:api' || true; nohup env DATABASE_URL='${DEPLOY_REMOTE_DB_URL}' SESSION_SECRET='${DEPLOY_REMOTE_SESSION_SECRET}' TRUSTED_ORIGINS='${DEPLOY_REMOTE_WEB_ORIGIN},${DEPLOY_REMOTE_API_ORIGIN}' WEB_PORT='80' PORT='${DEPLOY_REMOTE_API_PORT}' npm run start:api >/tmp/mlm-hosting-saas-api.log 2>&1 &) && $publish_command"
+  remote_command+="env DATABASE_URL='${DEPLOY_REMOTE_DB_URL}' SESSION_SECRET='${DEPLOY_REMOTE_SESSION_SECRET}' TRUSTED_ORIGINS='${DEPLOY_REMOTE_WEB_ORIGIN},${DEPLOY_REMOTE_API_ORIGIN}' WEB_PORT='80' node packages/database/dist/migrate.js && (pkill -f 'node dist/apps/api/src/index.js' || true; nohup env DATABASE_URL='${DEPLOY_REMOTE_DB_URL}' SESSION_SECRET='${DEPLOY_REMOTE_SESSION_SECRET}' TRUSTED_ORIGINS='${DEPLOY_REMOTE_WEB_ORIGIN},${DEPLOY_REMOTE_API_ORIGIN}' WEB_PORT='80' PORT='${DEPLOY_REMOTE_API_PORT}' node apps/api/dist/apps/api/src/index.js >/tmp/mlm-hosting-saas-api.log 2>&1 &) && $publish_command"
 else
   echo "Skipping remote post-sync because DEPLOY_REMOTE_POST_SYNC is empty and remote DB/session values are not set."
   remote_command+="$publish_command"
