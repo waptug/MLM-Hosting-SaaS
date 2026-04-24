@@ -137,7 +137,11 @@ rsync_ssh=(ssh -p "$DEPLOY_SSH_PORT" -o StrictHostKeyChecking=accept-new)
 if [[ -n "$DEPLOY_SSH_PASSWORD" ]]; then
   rsync_ssh+=(-o PreferredAuthentications=password -o PubkeyAuthentication=no)
 fi
-rsync -az --delete -e "${rsync_ssh[*]}" "$release_dir/" "$remote_target:$DEPLOY_REMOTE_DIR/"
+if [[ -n "$DEPLOY_SSH_PASSWORD" ]]; then
+  env DISPLAY=none SSH_ASKPASS="$temp_askpass" SSH_ASKPASS_REQUIRE=force setsid -w rsync -az --delete -e "${rsync_ssh[*]}" "$release_dir/" "$remote_target:$DEPLOY_REMOTE_DIR/"
+else
+  rsync -az --delete -e "${rsync_ssh[*]}" "$release_dir/" "$remote_target:$DEPLOY_REMOTE_DIR/"
+fi
 
 echo "Running remote post-sync and publishing web artifact on ${remote_target}"
 if [[ -n "$DEPLOY_SSH_PASSWORD" ]]; then
