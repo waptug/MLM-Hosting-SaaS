@@ -17,6 +17,7 @@ fi
 DEPLOY_SSH_PORT="${DEPLOY_SSH_PORT:-22}"
 DEPLOY_SSH_PASSWORD="${DEPLOY_SSH_PASSWORD:-}"
 DEPLOY_PUBLIC_DIR="${DEPLOY_PUBLIC_DIR:-/home/geekzoneai/www}"
+DEPLOY_INCLUDE_NODE_MODULES="${DEPLOY_INCLUDE_NODE_MODULES:-1}"
 DEPLOY_GIT_BRANCH="${DEPLOY_GIT_BRANCH:-main}"
 DEPLOY_AUTO_COMMIT="${DEPLOY_AUTO_COMMIT:-1}"
 DEPLOY_COMMIT_PREFIX="${DEPLOY_COMMIT_PREFIX:-Deploy}"
@@ -79,18 +80,32 @@ rm -rf "$release_dir"
 mkdir -p "$release_dir"
 
 echo "Preparing release bundle at $release_dir"
-rsync -a --delete \
-  --exclude '.git/' \
-  --exclude 'node_modules/' \
-  --exclude '.deploy/' \
-  --exclude '.deploy.env' \
-  --exclude '.codex/' \
-  --exclude '*.sqlite' \
-  --exclude '.env' \
-  --exclude '.env.*' \
-  --exclude 'coverage/' \
-  --exclude '*.log' \
-  "$ROOT_DIR/" "$release_dir/"
+if [[ "$DEPLOY_INCLUDE_NODE_MODULES" == "1" ]]; then
+  rsync -a --delete \
+    --exclude '.git/' \
+    --exclude '.deploy/' \
+    --exclude '.deploy.env' \
+    --exclude '.codex/' \
+    --exclude '*.sqlite' \
+    --exclude '.env' \
+    --exclude '.env.*' \
+    --exclude 'coverage/' \
+    --exclude '*.log' \
+    "$ROOT_DIR/" "$release_dir/"
+else
+  rsync -a --delete \
+    --exclude '.git/' \
+    --exclude 'node_modules/' \
+    --exclude '.deploy/' \
+    --exclude '.deploy.env' \
+    --exclude '.codex/' \
+    --exclude '*.sqlite' \
+    --exclude '.env' \
+    --exclude '.env.*' \
+    --exclude 'coverage/' \
+    --exclude '*.log' \
+    "$ROOT_DIR/" "$release_dir/"
+fi
 
 echo "Updating local git metadata..."
 if [[ "$DEPLOY_AUTO_COMMIT" == "1" ]]; then
@@ -111,10 +126,10 @@ if [[ -n "$DEPLOY_REMOTE_POST_SYNC" ]]; then
   remote_command+=" $DEPLOY_REMOTE_POST_SYNC && $publish_command"
 elif [[ -n "$DEPLOY_REMOTE_DB_URL" && -n "$DEPLOY_REMOTE_SESSION_SECRET" ]]; then
   echo "Running default remote post-sync command..."
-  remote_command+="npm install --workspaces --include-workspace-root --no-audit --no-fund && DATABASE_URL='${DEPLOY_REMOTE_DB_URL}' SESSION_SECRET='${DEPLOY_REMOTE_SESSION_SECRET}' TRUSTED_ORIGINS='${DEPLOY_REMOTE_WEB_ORIGIN},${DEPLOY_REMOTE_API_ORIGIN}' WEB_PORT='80' PORT='${DEPLOY_REMOTE_API_PORT}' npm run db:migrate && (pkill -f 'npm run start:api' || true; nohup env DATABASE_URL='${DEPLOY_REMOTE_DB_URL}' SESSION_SECRET='${DEPLOY_REMOTE_SESSION_SECRET}' TRUSTED_ORIGINS='${DEPLOY_REMOTE_WEB_ORIGIN},${DEPLOY_REMOTE_API_ORIGIN}' WEB_PORT='80' PORT='${DEPLOY_REMOTE_API_PORT}' npm run start:api >/tmp/mlm-hosting-saas-api.log 2>&1 &) && $publish_command"
+  remote_command+="DATABASE_URL='${DEPLOY_REMOTE_DB_URL}' SESSION_SECRET='${DEPLOY_REMOTE_SESSION_SECRET}' TRUSTED_ORIGINS='${DEPLOY_REMOTE_WEB_ORIGIN},${DEPLOY_REMOTE_API_ORIGIN}' WEB_PORT='80' PORT='${DEPLOY_REMOTE_API_PORT}' npm run db:migrate && (pkill -f 'npm run start:api' || true; nohup env DATABASE_URL='${DEPLOY_REMOTE_DB_URL}' SESSION_SECRET='${DEPLOY_REMOTE_SESSION_SECRET}' TRUSTED_ORIGINS='${DEPLOY_REMOTE_WEB_ORIGIN},${DEPLOY_REMOTE_API_ORIGIN}' WEB_PORT='80' PORT='${DEPLOY_REMOTE_API_PORT}' npm run start:api >/tmp/mlm-hosting-saas-api.log 2>&1 &) && $publish_command"
 else
   echo "Skipping remote post-sync because DEPLOY_REMOTE_POST_SYNC is empty and remote DB/session values are not set."
-  remote_command+="npm install --workspaces --include-workspace-root --no-audit --no-fund && $publish_command"
+  remote_command+="$publish_command"
 fi
 
 echo "Syncing release bundle and publishing web artifact on ${remote_target}"
