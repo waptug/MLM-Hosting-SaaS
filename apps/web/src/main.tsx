@@ -428,7 +428,8 @@ const manualSections: ManualSection[] = [
     items: [
       'Tenant onboarding, tenant users, and the business domain are PostgreSQL-backed for the demo tenant.',
       'Password login, invitation acceptance, and session cookies are now active for the local demo tenant.',
-      'Email delivery, password reset, and billing/invoice workflows are active, while deployment hardening is still pending production work.',
+      'Email delivery, password reset, and billing/invoice workflows are active, while deployment hardening and CSRF work are still pending production work.',
+      'Session cookies now support production-friendly secure, domain, and SameSite settings.',
       'Audit logging now captures key admin create actions and setup updates.',
       'For the current local environment, the app expects DATABASE_URL to point at the Postgres container.'
     ]
@@ -440,8 +441,7 @@ const productionTodoGroups: TodoGroup[] = [
     title: '1. Real user lifecycle',
     items: [
       'invite expiration and revocation UI',
-      'login rate limiting and lockout',
-      'secure cookie settings for production domains'
+      'login rate limiting and lockout'
     ]
   },
   {
@@ -513,6 +513,7 @@ const productionTodoGroups: TodoGroup[] = [
 
 const productionLaunchOrder = [
   'Invitation expiration and revocation UI',
+  'Login rate limiting and lockout',
   'CSRF protection and stronger session management',
   'Production deployment, monitoring, and CI/CD',
   'Browser and permission coverage',

@@ -57,14 +57,32 @@ app.use(
 app.use(express.json());
 
 function setSessionCookie(res: express.Response, sessionToken: string) {
+  const parts = [
+    `${sessionCookieName}=${encodeURIComponent(sessionToken)}`,
+    'Path=/',
+    'HttpOnly',
+    `SameSite=${config.sessionCookieSameSite[0].toUpperCase()}${config.sessionCookieSameSite.slice(1)}`
+  ];
+  if (config.sessionCookieSecure) parts.push('Secure');
+  if (config.sessionCookieDomain) parts.push(`Domain=${config.sessionCookieDomain}`);
+  parts.push(`Max-Age=${60 * 60 * 24 * config.sessionCookieMaxAgeDays}`);
   res.setHeader(
     'Set-Cookie',
-    `${sessionCookieName}=${encodeURIComponent(sessionToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 14}`
+    parts.join('; ')
   );
 }
 
 function clearSessionCookie(res: express.Response) {
-  res.setHeader('Set-Cookie', `${sessionCookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+  const parts = [
+    `${sessionCookieName}=`,
+    'Path=/',
+    'HttpOnly',
+    `SameSite=${config.sessionCookieSameSite[0].toUpperCase()}${config.sessionCookieSameSite.slice(1)}`,
+    'Max-Age=0'
+  ];
+  if (config.sessionCookieSecure) parts.push('Secure');
+  if (config.sessionCookieDomain) parts.push(`Domain=${config.sessionCookieDomain}`);
+  res.setHeader('Set-Cookie', parts.join('; '));
 }
 
 app.get('/api/health', (_req, res) => {
