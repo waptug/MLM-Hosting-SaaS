@@ -100,6 +100,12 @@ Or keep the server updated while you work locally:
 npm run deploy:watch
 ```
 
+To wait for the public site to return HTTP 200 and open it in your browser:
+
+```bash
+npm run check:site
+```
+
 The deploy flow:
 
 - builds the workspace
